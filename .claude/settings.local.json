@@ -30,7 +30,8 @@
       "WebFetch(domain:github.com)",
       "Bash(curl:*)",
       "Bash(gh auth:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(plutil:*)"
     ],
     "deny": [],
     "ask": []

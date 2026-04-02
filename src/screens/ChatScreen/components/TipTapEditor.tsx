@@ -695,6 +695,10 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 outline: "none",
                 width: "100%",
                 maxWidth: "none",
+                px: 3,
+              },
+              ".ProseMirror ul, .ProseMirror ol": {
+                paddingLeft: "1.5em",
               },
               ".ProseMirror p.is-editor-empty:first-of-type::before": {
                 content: "attr(data-placeholder)",
