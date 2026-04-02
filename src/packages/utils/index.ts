@@ -1,0 +1,1 @@
+export { isString } from "./checkType";

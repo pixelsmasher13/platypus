@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&display=swap');
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+
+  font-weight: 400;
+  font-family: "Nunito", "Montserrat", sans-serif;
+  color: var(--text-default-color);
+}
+
+:root {
+  --primary-color: #0d9488;
+  --primary-hover-color: #0d94881f;
+  --primary-button-hover-color: #0f766e;
+  --primary-dissabled-color: #0d94881f;
+  --secondary-color: #f0fdfa;
+  --secondary-hover-color: #ccfbf1;
+  --text-default-color: #475569;
+  --text-secondary-color: #fff;
+  --text-table-header-color: #64748b;
+  --title-failure-color: #fca5a5;
+  --text-dissabled: #e2e8f0;
+  --page-background-color: #f8fafc;
+  --card-header-background: #fff;
+  --card-content-background: #fff;
+  --table-header-background: #f1f5f9;
+  --default-border-color: #e2e8f0;
+  --active-border-color: #0d9488;
+  --active-button-text-color: #fff;
+  --danger-color: #ef4444;
+  --recording-active-color: #22c55e;
+  --scrollbar-color: rgba(0, 0, 0, 0.3);
+  --tooltip-background: #1e293b;
+  --icon-background: #0d94881a;
+  --icon-active-background: #0d94881a;
+
+  --paginator-background: #fff;
+
+  --category-default-color: #eab308;
+  --category-default-light-color: #eab3081a;
+  --category-1-color: #14b8a6;
+  --category-1-light-color: #14b8a61a;
+  --category-2-color: #6366f1;
+  --category-2-light-color: #6366f11a;
+  --category-3-color: #ec4899;
+  --category-3-light-color: #ec48991a;
+  --category-4-color: #f97316;
+  --category-4-light-color: #f973161a;
+  --category-5-color: #ef4444;
+  --category-5-light-color: #ef44441a;
+  --category-6-color: #a855f7;
+  --category-6-light-color: #a855f71a;
+  --category-7-color: #22c55e;
+  --category-7-light-color: #22c55e1a;
+
+  --button-icon-secondary-color: #e2e8f0;
+  --scrollbar-width: 4px;
+  --min-spinner-height: 100px;
+  --fullwidth: 100%;
+
+  --space-xs: 4px;
+  --space-s: 8px;
+  --space-default: 12px;
+  --space-l: 18px;
+  --space-xl: 24px;
+
+  --default-radius: 10px;
+  --card-radius: 10px;
+  --icon-radius: 8px;
+
+  --page-padding: var(--space-l);
+
+  --content-header-height: 46px;
+  --fixed-header-height: 0;
+  --sidebar-width: 220px;
+
+  --breakpoint-medium: 768px;
+  --breakpoint-large: 1024px;
+}
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: none;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-color);
+  border-radius: 10rem;
+}
+
+::-webkit-scrollbar-track-piece:start {
+  background: transparent;
+}
+
+::-webkit-scrollbar-track-piece:end {
+  background: transparent;
+}

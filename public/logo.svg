@@ -1,0 +1,9 @@
+<svg width="160" height="32" viewBox="0 0 160 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Platypus bill/head icon -->
+  <ellipse cx="14" cy="16" rx="10" ry="9" fill="#0d9488"/>
+  <ellipse cx="24" cy="17" rx="8" ry="4" fill="#14b8a6" rx="8"/>
+  <circle cx="11" cy="13" r="2" fill="white"/>
+  <circle cx="11.5" cy="13" r="1" fill="#1e293b"/>
+  <!-- Text: Platypus -->
+  <text x="38" y="22" font-family="Nunito, sans-serif" font-weight="700" font-size="18" fill="#0f766e">Platypus</text>
+</svg>

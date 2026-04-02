@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../LinefoxOpenMarch2026"
+		},
+		{
+			"path": "../../meetily"
+		},
+		{
+			"name": "meeting-minutes-autodetect",
+			"path": "../../meeting-minutes-autodetect"
+		}
+	],
+	"settings": {}
+}
