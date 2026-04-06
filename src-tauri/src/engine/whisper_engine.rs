@@ -65,7 +65,11 @@ pub async fn download_model(app_handle: &tauri::AppHandle, model_id: &str) -> Re
 
     info!("Downloading whisper model from {}", info.url);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3600))       // 1h total
+        .connect_timeout(std::time::Duration::from_secs(30)) // 30s to connect
+        .build()
+        .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
     let resp = client.get(info.url).send().await
         .map_err(|e| anyhow!("Failed to start model download: {}", e))?;
 
