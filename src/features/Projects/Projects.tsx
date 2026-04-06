@@ -407,6 +407,7 @@ const ProjectSelector: FC<{
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isPreparingRecording, setIsPreparingRecording] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [recordingFilePath, setRecordingFilePath] = useState<string | null>(null);
   const [liveTranscript, setLiveTranscript] = useState("");
@@ -619,19 +620,21 @@ const ProjectSelector: FC<{
   const startRecording = async () => {
     const useLocal = settings.use_local_transcription;
 
-    try {
-      // For OpenAI mode, check API key
-      if (!useLocal && !settings.api_key_open_ai) {
-        toast({
-          title: "API key required",
-          description: "An OpenAI API key is required for voice note transcription. Please add it in Settings.",
-          status: "warning",
-          duration: 5000,
-          isClosable: true,
-        });
-        return;
-      }
+    // For OpenAI mode, check API key before showing loading
+    if (!useLocal && !settings.api_key_open_ai) {
+      toast({
+        title: "API key required",
+        description: "An OpenAI API key is required for voice note transcription. Please add it in Settings.",
+        status: "warning",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
 
+    setIsPreparingRecording(true);
+
+    try {
       // For local mode, ensure model is ready
       if (useLocal) {
         const modelReady = await invoke<boolean>('check_whisper_model');
@@ -681,8 +684,10 @@ const ProjectSelector: FC<{
       }, 1000);
 
       setIsRecording(true);
+      setIsPreparingRecording(false);
     } catch (error) {
       console.error("Failed to start recording:", error);
+      setIsPreparingRecording(false);
       toast({
         title: "Recording failed",
         description: "Could not start voice recording. Please try again.",
@@ -1325,7 +1330,7 @@ const ProjectSelector: FC<{
 
         {!isRecording && !isTranscribing && !isDownloadingModel && (
           <Button
-            leftIcon={<Mic size={18} />}
+            leftIcon={isPreparingRecording ? undefined : <Mic size={18} />}
             onClick={startRecording}
             borderRadius="full"
             size="md"
@@ -1334,6 +1339,9 @@ const ProjectSelector: FC<{
             w="full"
             fontWeight="500"
             _hover={{ bg: "gray.50" }}
+            isLoading={isPreparingRecording}
+            loadingText="Starting..."
+            isDisabled={isPreparingRecording}
           >
             Record voice note
           </Button>
