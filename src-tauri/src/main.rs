@@ -982,7 +982,8 @@ async fn realtime_transcription_loop(app_handle: AppHandle) {
             continue;
         }
 
-        let chunk_duration_samples = (device_rate as usize) * 2; // 2 seconds
+        let chunk_duration_samples = (device_rate as usize) * 3; // 3 seconds
+        let min_chunk_samples = (device_rate as usize) * 2;    // 2 seconds minimum
 
         // Check if we have enough for a chunk, or if there's a silence gap
         let rms: f32 = if new.len() > 0 {
@@ -998,7 +999,7 @@ async fn realtime_transcription_loop(app_handle: AppHandle) {
         }
 
         let should_process = pending.len() >= chunk_duration_samples
-            || (silence_count >= 10 && pending.len() > device_rate as usize / 2);
+            || (silence_count >= 10 && pending.len() >= min_chunk_samples);
 
         if !should_process {
             continue;
