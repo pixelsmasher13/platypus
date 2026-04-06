@@ -34,7 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   model_openai: "",
   model_gemini: "",
   use_local_transcription: false,
-  whisper_model: "distil-large-v3.5",
+  whisper_model: "large-v3",
 };
 
 type Update = {
@@ -105,7 +105,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
       model_openai: getSettingOrEmpty(response, "model_openai") || "",
       model_gemini: getSettingOrEmpty(response, "model_gemini") || "",
       use_local_transcription: getSettingOrEmpty(response, "use_local_transcription") === "true",
-      whisper_model: getSettingOrEmpty(response, "whisper_model") || "distil-large-v3.5",
+      whisper_model: getSettingOrEmpty(response, "whisper_model") || "large-v3",
     };
   };
 

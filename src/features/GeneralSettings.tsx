@@ -229,9 +229,9 @@ export const GeneralSettings = () => {
                     setLocalSettings((prev) => ({ ...prev, whisperModel: e.target.value }))
                   }
                 >
-                  <option value="distil-large-v3.5">Distil Large v3.5 (~1.5GB, fastest)</option>
-                  <option value="large-v3-turbo">Large v3 Turbo (~1.6GB, balanced)</option>
                   <option value="large-v3">Large v3 (~3.1GB, best quality)</option>
+                  <option value="large-v3-turbo">Large v3 Turbo (~1.6GB, balanced)</option>
+                  <option value="distil-large-v3.5">Distil Large v3.5 (~1.5GB, fastest)</option>
                 </Select>
               </Flex>
             </Flex>

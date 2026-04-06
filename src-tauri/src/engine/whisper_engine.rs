@@ -19,19 +19,29 @@ fn get_model_info(model_id: &str) -> WhisperModelInfo {
             filename: "ggml-large-v3.bin",
             url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
         },
-        _ => WhisperModelInfo {
+        "distil-large-v3.5" => WhisperModelInfo {
             filename: "ggml-distil-large-v3.5.bin",
             url: "https://huggingface.co/distil-whisper/distil-large-v3.5-ggml/resolve/main/ggml-model.bin",
+        },
+        _ => WhisperModelInfo {
+            filename: "ggml-large-v3.bin",
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
         },
     }
 }
 
 static SUPPRESS_WHISPER_LOGS: Once = Once::new();
 
+unsafe extern "C" fn noop_log_callback(
+    _level: std::os::raw::c_uint,
+    _text: *const std::os::raw::c_char,
+    _user_data: *mut std::os::raw::c_void,
+) {}
+
 fn suppress_whisper_logs() {
     SUPPRESS_WHISPER_LOGS.call_once(|| {
         unsafe {
-            whisper_rs::set_log_callback(None, std::ptr::null_mut());
+            whisper_rs::set_log_callback(Some(noop_log_callback), std::ptr::null_mut());
         }
     });
 }
