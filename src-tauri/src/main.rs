@@ -26,7 +26,7 @@ use crate::engine::chat_engine_openai::{generate_conversation_name, send_prompt_
 use crate::engine::chat_engine_gemini::{name_conversation_gemini, send_prompt_to_gemini};
 use crate::engine::chat_engine_local::{name_conversation_local, send_prompt_to_local};
 use crate::engine::clean_up_engine::clean_up;
-use crate::engine::document_cleanup_engine::clean_up_document_with_llm;
+use crate::engine::document_cleanup_engine::{clean_up_document_with_llm, summarize_as_meeting_notes};
 use crate::engine::similarity_search_engine::SyncSimilaritySearch;
 use crate::entity::chat_item::{Chat, StoredMessage};
 use crate::entity::permission::Permission;
@@ -174,6 +174,7 @@ async fn main() {
             transcribe_audio,
             extract_document_text,
             clean_up_document_with_llm,
+            summarize_as_meeting_notes,
             check_whisper_model,
             download_whisper_model,
             init_whisper_model,

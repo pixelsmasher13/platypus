@@ -24,7 +24,7 @@ import {
   InputLeftElement,
   Spinner,
 } from '@chakra-ui/react';
-import { Bold, Italic, List, Undo, Redo, FolderInput, Search, Sparkles, Mic, Square } from "lucide-react";
+import { Bold, Italic, List, Undo, Redo, FolderInput, Search, Sparkles, Mic, Square, NotebookPen } from "lucide-react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { marked } from "marked";
@@ -50,6 +50,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [currentFont, setCurrentFont] = useState('Inter');
   const [projectSearchTerm, setProjectSearchTerm] = useState("");
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
@@ -505,6 +506,66 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     }
   };
 
+  const handleSummarizeAsMeeting = async () => {
+    if (!editor) return;
+
+    setIsSummarizing(true);
+    try {
+      const [, plainText] = await invoke<[string, string]>("get_app_project_activity_plain_text", {
+        activityId: documentId,
+      });
+
+      if (!plainText.trim()) {
+        toast({
+          title: "Nothing to summarize",
+          description: "This note is empty. Write something first!",
+          status: "warning",
+          duration: 3000,
+          isClosable: true,
+          position: "bottom-right",
+        });
+        return;
+      }
+
+      const { provider, modelId } = getProviderAndModel();
+      const summaryMarkdown = await invoke<string>("summarize_as_meeting_notes", {
+        plainText,
+        provider,
+        modelId,
+      });
+
+      if (summaryMarkdown) {
+        const html = await marked(summaryMarkdown);
+        editor.commands.setContent(html);
+
+        latestContentRef.current = editor.getHTML();
+        hasPendingSaveRef.current = true;
+        scheduleAutoSave();
+        setHasChanges(true);
+
+        toast({
+          title: "Meeting notes generated",
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+          position: "bottom-right",
+        });
+      }
+    } catch (error: any) {
+      console.error("Meeting summary failed:", error);
+      toast({
+        title: "Couldn't summarize as meeting notes",
+        description: error?.toString() || "An unexpected error occurred.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "bottom-right",
+      });
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
   return (
     <Box width="100%" padding="var(--space-l)" maxWidth="900px" mx="auto">
           <Flex
@@ -541,7 +602,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   variant="ghost"
                   onClick={isRecording ? stopNoteRecording : startNoteRecording}
                   color={isRecording ? "red.500" : undefined}
-                  isDisabled={isProcessingRecording || isTranscribing || isCleaningUp}
+                  isDisabled={isProcessingRecording || isTranscribing || isCleaningUp || isSummarizing}
                 />
               </Tooltip>
 
@@ -553,7 +614,19 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={handleCleanUpWithAI}
-                  isDisabled={isCleaningUp || isRecording || isTranscribing}
+                  isDisabled={isCleaningUp || isSummarizing || isRecording || isTranscribing}
+                />
+              </Tooltip>
+
+              {/* Summarize as meeting notes button */}
+              <Tooltip label="Summarize as meeting notes">
+                <IconButton
+                  aria-label="Summarize as meeting notes"
+                  icon={isSummarizing ? <Spinner size="xs" /> : <NotebookPen size={16} />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleSummarizeAsMeeting}
+                  isDisabled={isCleaningUp || isSummarizing || isRecording || isTranscribing}
                 />
               </Tooltip>
 

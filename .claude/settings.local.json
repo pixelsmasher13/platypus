@@ -31,7 +31,8 @@
       "Bash(curl:*)",
       "Bash(gh auth:*)",
       "Bash(git remote:*)",
-      "Bash(plutil:*)"
+      "Bash(plutil:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

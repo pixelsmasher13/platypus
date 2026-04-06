@@ -24,6 +24,20 @@ const CLEANUP_SYSTEM_PROMPT: &str = r##"You are a note cleanup assistant. Clean 
 
 Return ONLY the cleaned markdown. No explanations, no preamble, no wrapping in code fences."##;
 
+const MEETING_SUMMARY_SYSTEM_PROMPT: &str = r##"You are a meeting notes assistant. Transform the following raw text into concise meeting notes in markdown:
+
+## Summary
+A 2-3 sentence overview of what was discussed.
+
+## Key Points
+Bullet list of the important points, topics, and takeaways from the meeting.
+
+Rules:
+- Only use information present in the text — do not add or infer anything
+- Preserve names and specific details mentioned
+- Keep it concise but comprehensive
+- Return ONLY the markdown. No explanations, no preamble, no code fences."##;
+
 // Claude types
 #[derive(Serialize)]
 struct ClaudeRequest {
@@ -123,24 +137,45 @@ pub async fn clean_up_document_with_llm(
     model_id: Option<String>,
 ) -> Result<String, String> {
     info!("Cleaning up document with provider: {}, model: {:?}", provider, model_id);
+    send_to_llm(&app_handle, &plain_text, &provider, model_id, CLEANUP_SYSTEM_PROMPT).await
+}
 
+#[tauri::command]
+pub async fn summarize_as_meeting_notes(
+    app_handle: tauri::AppHandle,
+    plain_text: String,
+    provider: String,
+    model_id: Option<String>,
+) -> Result<String, String> {
+    info!("Summarizing as meeting notes with provider: {}, model: {:?}", provider, model_id);
+    send_to_llm(&app_handle, &plain_text, &provider, model_id, MEETING_SUMMARY_SYSTEM_PROMPT).await
+}
+
+async fn send_to_llm(
+    app_handle: &tauri::AppHandle,
+    plain_text: &str,
+    provider: &str,
+    model_id: Option<String>,
+    system_prompt: &str,
+) -> Result<String, String> {
     if plain_text.trim().is_empty() {
-        return Err("Document is empty, nothing to clean up.".to_string());
+        return Err("Document is empty, nothing to process.".to_string());
     }
 
-    match provider.as_str() {
-        "claude" => clean_up_with_claude(&app_handle, &plain_text, model_id).await,
-        "openai" => clean_up_with_openai(&app_handle, &plain_text, model_id).await,
-        "gemini" => clean_up_with_gemini(&app_handle, &plain_text, model_id).await,
-        "local" => clean_up_with_local(&app_handle, &plain_text, model_id).await,
+    match provider {
+        "claude" => call_claude(app_handle, plain_text, model_id, system_prompt).await,
+        "openai" => call_openai(app_handle, plain_text, model_id, system_prompt).await,
+        "gemini" => call_gemini(app_handle, plain_text, model_id, system_prompt).await,
+        "local" => call_local(app_handle, plain_text, model_id, system_prompt).await,
         _ => Err(format!("Unknown provider: {}", provider)),
     }
 }
 
-async fn clean_up_with_claude(
+async fn call_claude(
     app_handle: &tauri::AppHandle,
     plain_text: &str,
     model_id: Option<String>,
+    system_prompt: &str,
 ) -> Result<String, String> {
     let setting = app_handle.db(|db| get_setting(db, "api_key_claude").expect("Failed on api_key_claude"));
 
@@ -167,7 +202,7 @@ async fn clean_up_with_claude(
             role: "user".to_string(),
             content: plain_text.to_string(),
         }],
-        system: CLEANUP_SYSTEM_PROMPT.to_string(),
+        system: system_prompt.to_string(),
         stream: false,
     };
 
@@ -199,10 +234,11 @@ async fn clean_up_with_claude(
     }
 }
 
-async fn clean_up_with_openai(
+async fn call_openai(
     app_handle: &tauri::AppHandle,
     plain_text: &str,
     model_id: Option<String>,
+    system_prompt: &str,
 ) -> Result<String, String> {
     let setting = app_handle.db(|db| get_setting(db, "api_key_open_ai").expect("Failed on api_key_open_ai"));
 
@@ -217,7 +253,7 @@ async fn clean_up_with_openai(
 
     let messages: Vec<ChatCompletionRequestMessage> = vec![
         ChatCompletionRequestSystemMessageArgs::default()
-            .content(CLEANUP_SYSTEM_PROMPT)
+            .content(system_prompt)
             .build()
             .unwrap()
             .into(),
@@ -250,10 +286,11 @@ async fn clean_up_with_openai(
     Ok(cleaned)
 }
 
-async fn clean_up_with_gemini(
+async fn call_gemini(
     app_handle: &tauri::AppHandle,
     plain_text: &str,
     model_id: Option<String>,
+    system_prompt: &str,
 ) -> Result<String, String> {
     let setting = app_handle.db(|db| get_setting(db, "api_key_gemini").expect("Failed on api_key_gemini"));
 
@@ -269,7 +306,7 @@ async fn clean_up_with_gemini(
     let contents = vec![GeminiContent {
         role: "user".to_string(),
         parts: vec![GeminiPart {
-            text: format!("{}\n\n{}", CLEANUP_SYSTEM_PROMPT, plain_text),
+            text: format!("{}\n\n{}", system_prompt, plain_text),
         }],
     }];
 
@@ -311,10 +348,11 @@ async fn clean_up_with_gemini(
     }
 }
 
-async fn clean_up_with_local(
+async fn call_local(
     app_handle: &tauri::AppHandle,
     plain_text: &str,
     model_id: Option<String>,
+    system_prompt: &str,
 ) -> Result<String, String> {
     let setting = app_handle.db(|db| get_setting(db, "local_model_url").expect("Failed on local_model_url"));
     let base_url = if setting.setting_value.is_empty() {
@@ -333,7 +371,7 @@ async fn clean_up_with_local(
     let messages = vec![
         OllamaMessage {
             role: "system".to_string(),
-            content: CLEANUP_SYSTEM_PROMPT.to_string(),
+            content: system_prompt.to_string(),
         },
         OllamaMessage {
             role: "user".to_string(),
