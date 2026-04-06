@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Once;
 use anyhow::{Result, anyhow};
-use log::{info, warn};
+use log::info;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 struct WhisperModelInfo {
@@ -171,40 +171,6 @@ impl WhisperEngine {
             }
         }
 
-        let trimmed = text.trim().to_string();
-
-        if is_hallucination(&trimmed) {
-            warn!("Filtered hallucinated output: {:?}", trimmed);
-            return Ok(String::new());
-        }
-
-        Ok(trimmed)
+        Ok(text.trim().to_string())
     }
-}
-
-fn is_hallucination(text: &str) -> bool {
-    let lower = text.to_lowercase();
-
-    let hallucinations = [
-        "thank you",
-        "thanks for watching",
-        "subscribe",
-        "like and subscribe",
-        "see you next time",
-        "bye",
-        "you",
-        "...",
-    ];
-
-    for h in &hallucinations {
-        if lower.trim().trim_matches('.').trim() == *h {
-            return true;
-        }
-    }
-
-    if lower.len() <= 3 {
-        return true;
-    }
-
-    false
 }
