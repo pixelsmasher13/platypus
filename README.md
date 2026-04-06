@@ -12,7 +12,7 @@ Lightning-fast note taker, meeting transcriber, and knowledge manager. The open-
 - **100% private** — Everything stored locally on your device
 
 
-https://github.com/user-attachments/assets/e034862a-0def-4b75-a133-d850d191d82a
+<video src="https://github.com/user-attachments/assets/e034862a-0def-4b75-a133-d850d191d82a" autoplay loop muted playsinline></video>
 
 
 ## Voice Transcription
