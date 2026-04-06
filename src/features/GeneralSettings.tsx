@@ -26,6 +26,7 @@ type LocalSettings = {
   modelOpenai: string;
   modelGemini: string;
   useLocalTranscription: boolean;
+  whisperModel: string;
 };
 export const GeneralSettings = () => {
   const toast = useToast();
@@ -44,6 +45,7 @@ export const GeneralSettings = () => {
     modelOpenai: settings.model_openai,
     modelGemini: settings.model_gemini,
     useLocalTranscription: settings.use_local_transcription,
+    whisperModel: settings.whisper_model,
   });
 
   useEffect(() => {
@@ -61,6 +63,7 @@ export const GeneralSettings = () => {
       modelOpenai: settings.model_openai,
       modelGemini: settings.model_gemini,
       useLocalTranscription: settings.use_local_transcription,
+      whisperModel: settings.whisper_model,
     });
   }, [settings]);
 
@@ -143,6 +146,7 @@ export const GeneralSettings = () => {
       model_openai: localSettings.modelOpenai,
       model_gemini: localSettings.modelGemini,
       use_local_transcription: localSettings.useLocalTranscription,
+      whisper_model: localSettings.whisperModel,
     });
     savedSuccessfullyToast();
   };
@@ -207,10 +211,31 @@ export const GeneralSettings = () => {
             />
           </Flex>
           <Text fontSize="sm" color="gray.500">
-            Use a local Whisper model (distil-large-v3.5) for voice transcription
-            instead of OpenAI API. Works offline, no API key needed. Requires
-            ~1.5GB download on first use. Shows live transcript during recording.
+            Use a local Whisper model for voice transcription instead of OpenAI API.
+            Works offline, no API key needed. Shows live transcript during recording.
           </Text>
+          {localSettings.useLocalTranscription && (
+            <Flex alignItems="center" mt={3}>
+              <Flex flex={1}>
+                <Text fontSize="md" mr={4}>
+                  Whisper Model:
+                </Text>
+              </Flex>
+              <Flex flex={2}>
+                <Select
+                  size="md"
+                  value={localSettings.whisperModel}
+                  onChange={(e) =>
+                    setLocalSettings((prev) => ({ ...prev, whisperModel: e.target.value }))
+                  }
+                >
+                  <option value="distil-large-v3.5">Distil Large v3.5 (~1.5GB, fastest)</option>
+                  <option value="large-v3-turbo">Large v3 Turbo (~1.6GB, balanced)</option>
+                  <option value="large-v3">Large v3 (~3.1GB, best quality)</option>
+                </Select>
+              </Flex>
+            </Flex>
+          )}
         </Box>
 
         <Box>

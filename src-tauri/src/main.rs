@@ -385,6 +385,14 @@ async fn update_settings(app_handle: AppHandle, settings: Settings) {
             },
         )
         .unwrap();
+        insert_or_update_setting(
+            db,
+            Setting {
+                setting_key: String::from("whisper_model"),
+                setting_value: settings.whisper_model.clone(),
+            },
+        )
+        .unwrap();
     });
 
     // Update the runtime flag so the detection loop picks up the change immediately
@@ -849,22 +857,33 @@ async fn transcribe_audio(
 }
 
 // Whisper model management commands
+fn get_whisper_model_id(app_handle: &AppHandle) -> String {
+    app_handle.db(|db| {
+        get_setting(db, "whisper_model")
+            .map(|s| s.setting_value)
+            .unwrap_or_default()
+    })
+}
+
 #[tauri::command]
-fn check_whisper_model() -> bool {
-    crate::engine::whisper_engine::is_model_downloaded()
+fn check_whisper_model(app_handle: AppHandle) -> bool {
+    let model_id = get_whisper_model_id(&app_handle);
+    crate::engine::whisper_engine::is_model_downloaded(&model_id)
 }
 
 #[tauri::command]
 async fn download_whisper_model(app_handle: AppHandle) -> Result<(), String> {
-    crate::engine::whisper_engine::download_model(&app_handle)
+    let model_id = get_whisper_model_id(&app_handle);
+    crate::engine::whisper_engine::download_model(&app_handle, &model_id)
         .await
         .map_err(|e| format!("{}", e))
 }
 
 #[tauri::command]
-async fn init_whisper_model() -> Result<(), String> {
-    let engine = tokio::task::spawn_blocking(|| {
-        crate::engine::whisper_engine::WhisperEngine::load()
+async fn init_whisper_model(app_handle: AppHandle) -> Result<(), String> {
+    let model_id = get_whisper_model_id(&app_handle);
+    let engine = tokio::task::spawn_blocking(move || {
+        crate::engine::whisper_engine::WhisperEngine::load(&model_id)
     })
     .await
     .map_err(|e| format!("Join error: {}", e))?

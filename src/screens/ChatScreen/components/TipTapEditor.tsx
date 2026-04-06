@@ -53,6 +53,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [isSummarizing, setIsSummarizing] = useState(false);
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
+  const [isPreparingRecording, setIsPreparingRecording] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -265,6 +266,8 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       return;
     }
 
+    setIsPreparingRecording(true);
+
     // For local mode, ensure model is ready
     if (useLocal) {
       const modelReady = await invoke<boolean>('check_whisper_model');
@@ -309,8 +312,10 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
         }
       }, 1000);
       setIsRecording(true);
+      setIsPreparingRecording(false);
     } catch (error) {
       console.error("Failed to start recording:", error);
+      setIsPreparingRecording(false);
       toast({ title: "Recording failed", status: "error", duration: 3000, isClosable: true, position: "bottom-right" });
     }
   };
@@ -594,15 +599,15 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
             
             <Flex alignItems="center" gap={2}>
               {/* Voice record into note */}
-              <Tooltip label={isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Record into this note"}>
+              <Tooltip label={isPreparingRecording ? "Preparing..." : isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Record into this note"}>
                 <IconButton
                   aria-label={isRecording ? "Stop recording" : "Record voice note"}
-                  icon={isTranscribing ? <Spinner size="xs" /> : isRecording ? <Square size={16} /> : <Mic size={16} />}
+                  icon={isPreparingRecording || isTranscribing ? <Spinner size="xs" /> : isRecording ? <Square size={16} /> : <Mic size={16} />}
                   size="sm"
                   variant="ghost"
                   onClick={isRecording ? stopNoteRecording : startNoteRecording}
                   color={isRecording ? "red.500" : undefined}
-                  isDisabled={isProcessingRecording || isTranscribing || isCleaningUp || isSummarizing}
+                  isDisabled={isPreparingRecording || isProcessingRecording || isTranscribing || isCleaningUp || isSummarizing}
                 />
               </Tooltip>
 
@@ -800,15 +805,23 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
           )}
 
           {/* Inline recording status */}
-          {(isRecording || isTranscribing) && (
+          {(isPreparingRecording || isRecording || isTranscribing) && (
             <Box mt={3}>
               <Flex
                 px={3} py={2}
-                bg={isRecording ? "red.50" : "teal.50"}
+                bg={isPreparingRecording ? "blue.50" : isRecording ? "red.50" : "teal.50"}
                 borderRadius="md"
                 align="center"
                 gap={2}
               >
+                {isPreparingRecording && !isRecording && (
+                  <>
+                    <Spinner size="xs" color="blue.500" />
+                    <Text fontSize="xs" fontWeight="500" color="blue.600">
+                      Initializing microphone...
+                    </Text>
+                  </>
+                )}
                 {isRecording && (
                   <>
                     <Box

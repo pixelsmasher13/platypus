@@ -18,12 +18,13 @@ Two modes, controlled via a toggle in Settings (or during onboarding):
 | | OpenAI API (default) | Local Whisper |
 |---|---|---|
 | **How it works** | Records WAV, uploads to OpenAI Whisper API | On-device transcription via whisper.cpp |
-| **Model** | OpenAI Whier | [distil-large-v3.5](https://huggingface.co/distil-whisper/distil-large-v3.5-ggml) (GGML, ~1.5GB) |sp
-| **Quality** | Best | 7.08% WER — close to large-v3, ~5-6x faster |
+| **Model** | OpenAI Whisper | User-selectable (see below) |
 | **Requires** | OpenAI API key | Nothing (model auto-downloaded on first use) |
 | **Real-time** | No (transcribes after recording) | Yes (live transcript streams during recording) |
 | **Offline** | No | Yes |
 | **Hardware accel** | N/A | Metal (macOS), CPU fallback |
+
+**Local models** (selectable in Settings): Distil Large v3.5 (~1.5GB, default), Large v3 Turbo (~1.6GB), Large v3 (~3.1GB, best quality).
 
 ## Requirements
 

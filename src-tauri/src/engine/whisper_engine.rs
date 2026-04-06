@@ -4,8 +4,27 @@ use anyhow::{Result, anyhow};
 use log::{info, warn};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-const MODEL_FILENAME: &str = "ggml-distil-large-v3.5.bin";
-const MODEL_URL: &str = "https://huggingface.co/distil-whisper/distil-large-v3.5-ggml/resolve/main/ggml-model.bin";
+struct WhisperModelInfo {
+    filename: &'static str,
+    url: &'static str,
+}
+
+fn get_model_info(model_id: &str) -> WhisperModelInfo {
+    match model_id {
+        "large-v3-turbo" => WhisperModelInfo {
+            filename: "ggml-large-v3-turbo.bin",
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+        },
+        "large-v3" => WhisperModelInfo {
+            filename: "ggml-large-v3.bin",
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+        },
+        _ => WhisperModelInfo {
+            filename: "ggml-distil-large-v3.5.bin",
+            url: "https://huggingface.co/distil-whisper/distil-large-v3.5-ggml/resolve/main/ggml-model.bin",
+        },
+    }
+}
 
 static SUPPRESS_WHISPER_LOGS: Once = Once::new();
 
@@ -24,28 +43,30 @@ pub fn model_dir() -> PathBuf {
         .join("models")
 }
 
-pub fn model_path() -> PathBuf {
-    model_dir().join(MODEL_FILENAME)
+pub fn model_path(model_id: &str) -> PathBuf {
+    let info = get_model_info(model_id);
+    model_dir().join(info.filename)
 }
 
-pub fn is_model_downloaded() -> bool {
-    let path = model_path();
+pub fn is_model_downloaded(model_id: &str) -> bool {
+    let path = model_path(model_id);
     path.exists() && path.metadata().map(|m| m.len() > 1_000_000).unwrap_or(false)
 }
 
-pub async fn download_model(app_handle: &tauri::AppHandle) -> Result<()> {
+pub async fn download_model(app_handle: &tauri::AppHandle, model_id: &str) -> Result<()> {
     use tauri::Manager;
 
+    let info = get_model_info(model_id);
     let dir = model_dir();
     std::fs::create_dir_all(&dir)?;
 
-    let dest = model_path();
+    let dest = model_path(model_id);
     let tmp = dest.with_extension("bin.tmp");
 
-    info!("Downloading whisper model from {}", MODEL_URL);
+    info!("Downloading whisper model from {}", info.url);
 
     let client = reqwest::Client::new();
-    let resp = client.get(MODEL_URL).send().await
+    let resp = client.get(info.url).send().await
         .map_err(|e| anyhow!("Failed to start model download: {}", e))?;
 
     if !resp.status().is_success() {
@@ -93,8 +114,8 @@ pub struct WhisperEngine {
 }
 
 impl WhisperEngine {
-    pub fn load() -> Result<Self> {
-        let path = model_path();
+    pub fn load(model_id: &str) -> Result<Self> {
+        let path = model_path(model_id);
         if !path.exists() {
             return Err(anyhow!("Whisper model not found at {:?}. Download it first.", path));
         }
