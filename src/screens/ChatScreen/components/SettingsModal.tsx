@@ -46,7 +46,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <Title type="m">Settings</Title>
         </ModalHeader>
         <ModalCloseButton />
-        <ModalBody pb={6}>
+        <ModalBody
+          pb={6}
+          sx={{
+            "&::-webkit-scrollbar": { width: "8px" },
+            "&::-webkit-scrollbar-track": { bg: "gray.50", borderRadius: "4px" },
+            "&::-webkit-scrollbar-thumb": { bg: "gray.300", borderRadius: "4px" },
+            "&::-webkit-scrollbar-thumb:hover": { bg: "gray.400" },
+          }}
+        >
           <Box>
             <GeneralSettings />
           </Box>

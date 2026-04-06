@@ -382,7 +382,17 @@ export const GeneralSettings = () => {
           </Text>
         </Box>
 
-        <Flex flex={1} justifyContent="flex-end">
+        <Flex
+          justifyContent="flex-end"
+          position="sticky"
+          bottom={0}
+          bg="white"
+          pt={4}
+          pb={2}
+          borderTop="1px solid"
+          borderTopColor="gray.100"
+          mt={2}
+        >
           <Button colorScheme="teal" size="md" onClick={onSave}>
             Save
           </Button>
