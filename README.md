@@ -111,6 +111,16 @@ A few of the less-obvious decisions:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Acknowledgments
+
+Platypus stands on the shoulders of:
+
+- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and [whisper-rs](https://github.com/tazz4843/whisper-rs) — local speech-to-text
+- [Distil-Whisper](https://huggingface.co/distil-whisper) by HuggingFace — the distilled Whisper variants
+- [nnnoiseless](https://github.com/jneem/nnnoiseless) — pure-Rust port of Mozilla's RNNoise
+- [rubato](https://github.com/HEnquist/rubato) — sample-rate conversion
+- [hnswlib-rs](https://github.com/jean-pierreBoth/hnswlib-rs) — HNSW vector index
+
 ## License
 
 MIT.
