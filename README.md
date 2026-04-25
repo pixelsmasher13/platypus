@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Platypus — a private, desktop-native notebook for meetings and knowledge" width="100%"/>
+  <img src="docs/images/banner.svg" alt="Platypus — notes, meetings, and knowledge, on your machine" width="100%"/>
 </p>
 
 # Platypus Notes

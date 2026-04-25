@@ -1,4 +1,4 @@
-<svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Platypus — local notes, meetings, and chat with your knowledge">
+<svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Platypus — notes, meetings, and knowledge, on your machine">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#FAFAFA"/>
@@ -39,7 +39,7 @@
         font-size="20"
         font-weight="500"
         fill="#52525B"
-        letter-spacing="0.3">A private, desktop-native notebook for meetings and knowledge</text>
+        letter-spacing="0.3">Notes, meetings, and your knowledge — on your machine</text>
 
   <!-- Divider -->
   <line x1="280" y1="395" x2="1000" y2="395" stroke="#E4E4E7" stroke-width="1"/>
