@@ -1,0 +1,64 @@
+<svg viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Platypus — local notes, meetings, and chat with your knowledge">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FAFAFA"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="tealGlow" cx="78%" cy="22%" r="55%">
+      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#14B8A6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="purpleGlow" cx="20%" cy="85%" r="55%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background layers -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#tealGlow)"/>
+  <rect width="1280" height="640" fill="url(#purpleGlow)"/>
+
+  <!-- Subtle outline circles (echo Meetily's organic accents but lighter) -->
+  <circle cx="1100" cy="120" r="180" fill="none" stroke="#E4E4E7" stroke-width="1" opacity="0.7"/>
+  <circle cx="640" cy="320" r="280" fill="none" stroke="#E4E4E7" stroke-width="1" opacity="0.4"/>
+
+  <!-- App name -->
+  <text x="640" y="295"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="132"
+        font-weight="700"
+        fill="#18181B"
+        letter-spacing="-5">Platypus</text>
+
+  <!-- Subtitle directly under the name -->
+  <text x="640" y="340"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="20"
+        font-weight="500"
+        fill="#52525B"
+        letter-spacing="0.3">A private, desktop-native notebook for meetings and knowledge</text>
+
+  <!-- Divider -->
+  <line x1="280" y1="395" x2="1000" y2="395" stroke="#E4E4E7" stroke-width="1"/>
+
+  <!-- Function tagline -->
+  <text x="640" y="465"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="34"
+        font-weight="600"
+        fill="#27272A"
+        letter-spacing="-1">Capture <tspan fill="#14B8A6">·</tspan> Transcribe <tspan fill="#14B8A6">·</tspan> Organize <tspan fill="#14B8A6">·</tspan> All Local</text>
+
+  <!-- Branding mark at the bottom -->
+  <text x="640" y="568"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="13"
+        font-weight="600"
+        fill="#A1A1AA"
+        letter-spacing="3">PLATYPUSNOTES.COM</text>
+</svg>

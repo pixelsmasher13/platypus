@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/banner.svg" alt="Platypus — a private, desktop-native notebook for meetings and knowledge" width="100%"/>
+</p>
+
 # Platypus Notes
 
 An open-source desktop app for taking notes, transcribing meetings, and chatting with your documents. Runs entirely on your machine — the only network calls are to whichever LLM you choose to connect, and only when you ask a question.
@@ -26,17 +30,6 @@ Data stays on disk in SQLite. In local transcription mode, audio never leaves yo
 | Free                         | ✅          | partial | partial    | ❌       |
 | Native desktop               | ✅          | ✅      | ❌         | ❌       |
 
-## Architecture
-
-A few notes on the interesting parts.
-
-- **Audio pipeline**: CPAL capture → energy-based VAD on raw samples → nnnoiseless denoising at 48kHz → rubato resample to 16kHz → whisper.cpp via [whisper-rs](https://github.com/tazz4843/whisper-rs) with Metal on macOS.
-- **Why VAD before denoise**: RNNoise crushes signal amplitude ~100x, so the energy gate has to run on raw audio or every chunk looks silent.
-- **Real-time chunking**: 3-second minimum chunks streamed during recording; the trailing chunk is drained at stop and transcribed regardless of length.
-- **Vector search**: per-project HNSW indices ([hnswlib-rs](https://github.com/jean-pierreBoth/hnswlib-rs)); documents chunked and embedded on save when vectorization is enabled.
-- **Meeting detection**: detects Zoom by presence of the `CptHost` process and Teams by CPU usage on its `audio.mojom.AudioService` sub-process — no Zoom/Teams API access required.
-- **Process model**: Tauri v1 with Rust backend + React/TS frontend. `lazy_static` singletons for the Whisper engine and vector store; `tokio::task::spawn_blocking` for CPU-heavy work in async paths.
-
 ## Voice transcription
 
 Two modes, switchable in Settings.
@@ -53,7 +46,6 @@ Two modes, switchable in Settings.
 
 - Requires an OpenAI API key
 - Transcribes after recording finishes (not real-time)
-- Requires internet
 
 ## Tech stack
 
@@ -106,6 +98,14 @@ npm run tauri build
 ```
 
 For a signed + notarized macOS build that uploads to your S3 bucket, see [`scripts/build-mac.sh`](scripts/build-mac.sh) — requires Apple Developer credentials in `.env.build`.
+
+## Architecture notes
+
+A few of the less-obvious decisions:
+
+- **Audio pipeline**: CPAL capture → energy-based VAD on raw samples → nnnoiseless denoising at 48kHz → rubato resample to 16kHz → whisper.cpp via [whisper-rs](https://github.com/tazz4843/whisper-rs). VAD runs *before* denoise because RNNoise crushes signal amplitude ~100x and every chunk would otherwise look silent.
+- **Meeting detection**: Zoom is detected by presence of the `CptHost` process; Teams by CPU usage on its `audio.mojom.AudioService` sub-process. No Zoom/Teams API access required.
+- **Vector search**: per-project HNSW indices ([hnswlib-rs](https://github.com/jean-pierreBoth/hnswlib-rs)); documents chunked and embedded on save when vectorization is enabled.
 
 ## Contributing
 
