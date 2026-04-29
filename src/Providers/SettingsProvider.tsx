@@ -87,7 +87,6 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
   };
 
   const buildSettings = (response: SettingDbItem[]): Settings => {
-    console.log(getSettingOrEmpty(response, "interval"));
     return {
       interval: getSettingOrEmpty(response, "interval") || "20",
       is_dev_mode: getSettingOrEmpty(response, "is_dev_mode") == "true",
