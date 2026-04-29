@@ -17,8 +17,23 @@ struct ClaudeRequest {
     model: String,
     max_tokens: usize,
     messages: Vec<Message>,
-    system: String,
+    system: Vec<SystemBlock>,
     stream: bool,
+}
+
+#[derive(Serialize)]
+struct SystemBlock {
+    #[serde(rename = "type")]
+    block_type: String,
+    text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<CacheControl>,
+}
+
+#[derive(Serialize)]
+struct CacheControl {
+    #[serde(rename = "type")]
+    cache_type: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -191,11 +206,20 @@ pub async fn send_prompt_to_llm(
         }
     }
 
+    // Wrap the system prompt with prompt caching enabled.
+    // Anthropic silently ignores cache_control if the block is below the
+    // minimum cacheable size (~1024 tokens), so this is safe for short prompts.
     let request_body = ClaudeRequest {
         model: model_to_use.to_string(),
         max_tokens: 4096,
         messages,
-        system: system_prompt,
+        system: vec![SystemBlock {
+            block_type: "text".to_string(),
+            text: system_prompt,
+            cache_control: Some(CacheControl {
+                cache_type: "ephemeral".to_string(),
+            }),
+        }],
         stream: true,
     };
 
@@ -410,7 +434,11 @@ pub async fn name_conversation(
             content: "Please generate a concise name for the conversation based on the user input."
                 .to_string(),
         }],
-        system: system_prompt,
+        system: vec![SystemBlock {
+            block_type: "text".to_string(),
+            text: system_prompt,
+            cache_control: None,
+        }],
         stream: false,
     };
 

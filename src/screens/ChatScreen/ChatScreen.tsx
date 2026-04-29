@@ -236,13 +236,12 @@ export const ChatScreen: FC = () => {
         }
       });
     } else if (!state.selectedActivityId && totalActivities > 0) {
-      // If there are notes but none selected, auto-create a fresh one
+      // Open the most recent existing note instead of creating a new untitled one
       hasAutoCreatedNote.current = true;
-      addUnassignedActivity().then((newId) => {
-        if (newId) {
-          selectActivity(newId);
-        }
-      });
+      const mostRecentId = Math.max(
+        ...state.projects.flatMap((p) => p.activities)
+      );
+      selectActivity(mostRecentId);
     }
   }, [state.projects]);
 
