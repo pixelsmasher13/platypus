@@ -208,6 +208,44 @@ pub async fn generate_slides_from_document(
     parse_slides(&raw)
 }
 
+/// Generate a podcast-ready script from a document.
+/// Returns plain narration text (no markdown, no host markers) suitable for direct TTS.
+pub async fn generate_podcast_script(
+    app_handle: &tauri::AppHandle,
+    plain_text: &str,
+    provider: &str,
+    model_id: Option<String>,
+    focus: Option<&str>,
+    target_minutes: u32,
+) -> Result<String, String> {
+    // Approximate words-per-minute for TTS narration
+    const WPM: u32 = 150;
+    let target_words = target_minutes * WPM;
+
+    let mut user_prompt = format!(
+        "Document content:\n\n{}\n\n---\nWrite a podcast narration of approximately {} words ({} minute{}).",
+        plain_text.trim(),
+        target_words,
+        target_minutes,
+        if target_minutes == 1 { "" } else { "s" }
+    );
+    if let Some(f) = focus.map(str::trim).filter(|s| !s.is_empty()) {
+        user_prompt.push_str(&format!("\nFocus or style: {}", f));
+    }
+
+    send_to_llm(app_handle, &user_prompt, provider, model_id, PODCAST_SCRIPT_SYSTEM_PROMPT).await
+}
+
+const PODCAST_SCRIPT_SYSTEM_PROMPT: &str = r##"You are a podcast scriptwriter. Turn the user's document into a single-voice narration that sounds natural when read aloud.
+
+Rules:
+- Write conversational, spoken-style prose. Contractions are fine. Avoid jargon unless the source uses it.
+- Open with a brief hook (one sentence) before diving in.
+- Use only information present in the source. Do not invent facts.
+- Output ONLY the narration text. No headings, no markdown, no stage directions, no "Host:" labels, no parenthetical asides.
+- Aim for natural pauses with periods and short sentences. Avoid run-on sentences.
+- End with a one-sentence wrap-up."##;
+
 /// Best-effort JSON extraction: strips optional markdown fences and slices to the
 /// first '[' and last ']' to forgive a stray preamble or trailing comment.
 fn parse_slides(raw: &str) -> Result<Vec<Slide>, String> {

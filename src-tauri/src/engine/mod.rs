@@ -11,3 +11,4 @@ pub mod document_cleanup_engine;
 pub mod meeting_detector;
 pub mod whisper_engine;
 pub mod audio_processor;
+pub mod podcast_generator;

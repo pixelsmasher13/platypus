@@ -27,6 +27,7 @@ type LocalSettings = {
   modelGemini: string;
   useLocalTranscription: boolean;
   whisperModel: string;
+  apiKeyElevenlabs: string;
 };
 export const GeneralSettings = () => {
   const toast = useToast();
@@ -46,6 +47,7 @@ export const GeneralSettings = () => {
     modelGemini: settings.model_gemini,
     useLocalTranscription: settings.use_local_transcription,
     whisperModel: settings.whisper_model,
+    apiKeyElevenlabs: settings.api_key_elevenlabs,
   });
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export const GeneralSettings = () => {
       modelGemini: settings.model_gemini,
       useLocalTranscription: settings.use_local_transcription,
       whisperModel: settings.whisper_model,
+      apiKeyElevenlabs: settings.api_key_elevenlabs,
     });
   }, [settings]);
 
@@ -147,6 +150,7 @@ export const GeneralSettings = () => {
       model_gemini: localSettings.modelGemini,
       use_local_transcription: localSettings.useLocalTranscription,
       whisper_model: localSettings.whisperModel,
+      api_key_elevenlabs: localSettings.apiKeyElevenlabs,
     });
     savedSuccessfullyToast();
   };
@@ -297,6 +301,22 @@ export const GeneralSettings = () => {
                 value={localSettings.apiKeyGemini}
                 onChange={onChangeGeminiApiKey}
                 placeholder="AIza..."
+              />
+            </Flex>
+          </Flex>
+          <Flex alignItems="center" mb={2}>
+            <Flex flex={1}>
+              <Text fontSize="md" mr={4}>
+                ElevenLabs API Key:
+              </Text>
+            </Flex>
+            <Flex flex={2}>
+              <Input
+                value={localSettings.apiKeyElevenlabs}
+                onChange={(e) =>
+                  setLocalSettings((prev) => ({ ...prev, apiKeyElevenlabs: e.target.value }))
+                }
+                placeholder="Required for podcast generation"
               />
             </Flex>
           </Flex>

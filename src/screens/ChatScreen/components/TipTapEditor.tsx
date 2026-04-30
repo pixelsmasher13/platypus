@@ -24,8 +24,9 @@ import {
   InputLeftElement,
   Spinner,
 } from '@chakra-ui/react';
-import { Bold, Italic, List, Undo, Redo, FolderInput, Search, Sparkles, Mic, Square, NotebookPen, Presentation } from "lucide-react";
+import { Bold, Italic, List, Undo, Redo, FolderInput, Search, Sparkles, Mic, Square, NotebookPen, Presentation, Wand2, Headphones } from "lucide-react";
 import { SlideGeneratorModal } from "./SlideGeneratorModal";
+import { PodcastGeneratorModal } from "./PodcastGeneratorModal";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { marked } from "marked";
@@ -52,9 +53,10 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [projectSearchTerm, setProjectSearchTerm] = useState("");
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  // Slide generator modal state
+  // Slide / podcast generator modal state — both share a fetched plain-text payload
   const [isSlideModalOpen, setIsSlideModalOpen] = useState(false);
-  const [slidePlainText, setSlidePlainText] = useState("");
+  const [isPodcastModalOpen, setIsPodcastModalOpen] = useState(false);
+  const [generatorPlainText, setGeneratorPlainText] = useState("");
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [isPreparingRecording, setIsPreparingRecording] = useState(false);
@@ -575,7 +577,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     }
   };
 
-  const handleOpenSlideGenerator = async () => {
+  const openGeneratorModal = async (kind: "slides" | "podcast") => {
     try {
       const [, plainText] = await invoke<[string, string]>("get_app_project_activity_plain_text", {
         activityId: documentId,
@@ -593,10 +595,11 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
         return;
       }
 
-      setSlidePlainText(plainText);
-      setIsSlideModalOpen(true);
+      setGeneratorPlainText(plainText);
+      if (kind === "slides") setIsSlideModalOpen(true);
+      else setIsPodcastModalOpen(true);
     } catch (error: any) {
-      console.error("Failed to load document for slide generation:", error);
+      console.error("Failed to load document for generator:", error);
       toast({
         title: "Couldn't load document",
         description: error?.toString() || "An unexpected error occurred.",
@@ -607,6 +610,9 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       });
     }
   };
+
+  const handleOpenSlideGenerator = () => openGeneratorModal("slides");
+  const handleOpenPodcastGenerator = () => openGeneratorModal("podcast");
 
   return (
     <Box width="100%" padding="var(--space-l)" maxWidth="900px" mx="auto">
@@ -660,29 +666,39 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 />
               </Tooltip>
 
-              {/* Summarize as meeting notes button */}
-              <Tooltip label="Summarize as meeting notes">
-                <IconButton
-                  aria-label="Summarize as meeting notes"
-                  icon={isSummarizing ? <Spinner size="xs" /> : <NotebookPen size={16} />}
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleSummarizeAsMeeting}
-                  isDisabled={isCleaningUp || isSummarizing || isRecording || isTranscribing}
-                />
-              </Tooltip>
-
-              {/* Generate slide deck button */}
-              <Tooltip label="Generate slide deck">
-                <IconButton
-                  aria-label="Generate slide deck"
-                  icon={<Presentation size={16} />}
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleOpenSlideGenerator}
-                  isDisabled={isCleaningUp || isSummarizing || isRecording || isTranscribing}
-                />
-              </Tooltip>
+              {/* Generate dropdown: meeting notes, slides, podcast (coming soon) */}
+              <Menu placement="bottom-end" isLazy>
+                <Tooltip label="Generate from this note">
+                  <MenuButton
+                    as={IconButton}
+                    aria-label="Generate from this note"
+                    icon={isSummarizing ? <Spinner size="xs" /> : <Wand2 size={16} />}
+                    size="sm"
+                    variant="ghost"
+                    isDisabled={isCleaningUp || isSummarizing || isRecording || isTranscribing}
+                  />
+                </Tooltip>
+                <MenuList minWidth="220px">
+                  <MenuItem
+                    icon={<NotebookPen size={14} />}
+                    onClick={handleSummarizeAsMeeting}
+                  >
+                    Meeting notes
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Presentation size={14} />}
+                    onClick={handleOpenSlideGenerator}
+                  >
+                    Slide deck
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Headphones size={14} />}
+                    onClick={handleOpenPodcastGenerator}
+                  >
+                    Podcast
+                  </MenuItem>
+                </MenuList>
+              </Menu>
 
               {/* Project assignment/reassignment dropdown - show for all documents */}
               <Menu
@@ -908,7 +924,14 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
           <SlideGeneratorModal
             isOpen={isSlideModalOpen}
             onClose={() => setIsSlideModalOpen(false)}
-            plainText={slidePlainText}
+            plainText={generatorPlainText}
+            provider={getProviderAndModel().provider}
+            modelId={getProviderAndModel().modelId}
+          />
+          <PodcastGeneratorModal
+            isOpen={isPodcastModalOpen}
+            onClose={() => setIsPodcastModalOpen(false)}
+            plainText={generatorPlainText}
             provider={getProviderAndModel().provider}
             modelId={getProviderAndModel().modelId}
           />

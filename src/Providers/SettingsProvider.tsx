@@ -35,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   model_gemini: "",
   use_local_transcription: true,
   whisper_model: "large-v3",
+  api_key_elevenlabs: "",
 };
 
 type Update = {
@@ -59,6 +60,7 @@ export type Settings = {
   model_gemini: string;
   use_local_transcription: boolean;
   whisper_model: string;
+  api_key_elevenlabs: string;
 };
 
 type SettingsContextType = {
@@ -105,6 +107,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
       model_gemini: getSettingOrEmpty(response, "model_gemini") || "",
       use_local_transcription: getSettingOrEmpty(response, "use_local_transcription") !== "false",
       whisper_model: getSettingOrEmpty(response, "whisper_model") || "large-v3",
+      api_key_elevenlabs: getSettingOrEmpty(response, "api_key_elevenlabs") || "",
     };
   };
 

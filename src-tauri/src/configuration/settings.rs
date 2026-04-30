@@ -19,4 +19,5 @@ pub struct Settings {
     pub model_gemini: String,
     pub use_local_transcription: bool,
     pub whisper_model: String,
+    pub api_key_elevenlabs: String,
 }

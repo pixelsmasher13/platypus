@@ -27,6 +27,7 @@ use crate::engine::chat_engine_gemini::{name_conversation_gemini, send_prompt_to
 use crate::engine::chat_engine_local::{name_conversation_local, send_prompt_to_local};
 use crate::engine::clean_up_engine::clean_up;
 use crate::engine::document_cleanup_engine::{clean_up_document_with_llm, summarize_as_meeting_notes, generate_slides_from_document};
+use crate::engine::podcast_generator::{generate_podcast_from_document, list_elevenlabs_voices};
 use crate::engine::similarity_search_engine::SyncSimilaritySearch;
 use crate::entity::chat_item::{Chat, StoredMessage};
 use crate::entity::permission::Permission;
@@ -176,6 +177,8 @@ async fn main() {
             clean_up_document_with_llm,
             summarize_as_meeting_notes,
             generate_slides_from_document,
+            generate_podcast_from_document,
+            list_elevenlabs_voices,
             check_whisper_model,
             download_whisper_model,
             init_whisper_model,
@@ -391,6 +394,14 @@ async fn update_settings(app_handle: AppHandle, settings: Settings) {
             Setting {
                 setting_key: String::from("whisper_model"),
                 setting_value: settings.whisper_model.clone(),
+            },
+        )
+        .unwrap();
+        insert_or_update_setting(
+            db,
+            Setting {
+                setting_key: String::from("api_key_elevenlabs"),
+                setting_value: settings.api_key_elevenlabs.clone(),
             },
         )
         .unwrap();
