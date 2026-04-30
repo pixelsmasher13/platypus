@@ -28,7 +28,16 @@
       "all": true,
       "fs": {
         "scope": [
-          "$RESOURCE/*"
+          "$RESOURCE/*",
+          "$APPDATA/*",
+          "$APPDATA/podcasts/*"
+        ]
+      },
+      "protocol": {
+        "asset": true,
+        "assetScope": [
+          "$APPDATA/*",
+          "$APPDATA/podcasts/*"
         ]
       }
     },

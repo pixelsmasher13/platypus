@@ -1,4 +1,4 @@
-import { type FC, useState, useRef, useEffect } from "react";
+import { type FC, useState, useEffect } from "react";
 import {
   Modal,
   ModalOverlay,
@@ -20,21 +20,21 @@ import {
   useToast,
 } from "@chakra-ui/react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { save } from "@tauri-apps/api/dialog";
-import { readBinaryFile, writeBinaryFile } from "@tauri-apps/api/fs";
-import { convertFileSrc } from "@tauri-apps/api/tauri";
-import { Headphones, Download, RefreshCw } from "lucide-react";
-
-type PodcastResult = {
-  file_path: string;
-  script: string;
-  script_chars: number;
-};
+import { Headphones } from "lucide-react";
 
 type ElevenLabsVoice = {
   voice_id: string;
   name: string;
   category?: string;
+};
+
+export type PodcastGenerationParams = {
+  plainText: string;
+  provider: string;
+  modelId?: string;
+  focus: string | null;
+  lengthMinutes: number;
+  voiceId: string;
 };
 
 type Props = {
@@ -43,15 +43,37 @@ type Props = {
   plainText: string;
   provider: string;
   modelId?: string;
+  /** Called when user submits the form. Generation runs in the background — modal closes immediately. */
+  onSubmit: (params: PodcastGenerationParams) => void;
 };
 
 const CUSTOM_VOICE_VALUE = "__custom__";
 
-/// Premade voices come from ElevenLabs' shared library and require a paid plan to call via API.
-/// Filter them out so the dropdown only shows voices the user can actually use:
-/// their own clones, generated voices, or professional clones.
-function filterUsableVoices(voices: ElevenLabsVoice[]): ElevenLabsVoice[] {
-  return voices.filter((v) => (v.category ?? "").toLowerCase() !== "premade");
+// Public ElevenLabs library voice IDs. Free-tier API access to these returns 402
+// (paid plan required), but they show up so paid users can use them with one click,
+// and free users have something to try before adding a custom voice.
+const PRESET_LIBRARY_VOICES: ElevenLabsVoice[] = [
+  { voice_id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", category: "library" },
+  { voice_id: "EXAVITQu4vr4xnSDxMAi", name: "Bella", category: "library" },
+  { voice_id: "pNInz6obpgDQGcFmaJgB", name: "Adam", category: "library" },
+  { voice_id: "ErXwobaYiN019PkySvjV", name: "Antoni", category: "library" },
+  { voice_id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", category: "library" },
+];
+
+function splitUserAndLibrary(voices: ElevenLabsVoice[]): {
+  user: ElevenLabsVoice[];
+  library: ElevenLabsVoice[];
+} {
+  const user: ElevenLabsVoice[] = [];
+  const library: ElevenLabsVoice[] = [];
+  for (const v of voices) {
+    if ((v.category ?? "").toLowerCase() === "premade") {
+      library.push({ ...v, category: "library" });
+    } else {
+      user.push(v);
+    }
+  }
+  return { user, library };
 }
 
 const LENGTH_OPTIONS = [
@@ -66,42 +88,35 @@ export const PodcastGeneratorModal: FC<Props> = ({
   plainText,
   provider,
   modelId,
+  onSubmit,
 }) => {
   const toast = useToast();
   const [focus, setFocus] = useState("");
   const [lengthMinutes, setLengthMinutes] = useState<number>(3);
-  const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
-  const [voiceId, setVoiceId] = useState<string>(CUSTOM_VOICE_VALUE);
+  const [userVoices, setUserVoices] = useState<ElevenLabsVoice[]>([]);
+  const [libraryVoices, setLibraryVoices] = useState<ElevenLabsVoice[]>(PRESET_LIBRARY_VOICES);
+  const [voiceId, setVoiceId] = useState<string>(PRESET_LIBRARY_VOICES[0].voice_id);
   const [customVoiceId, setCustomVoiceId] = useState("");
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
-  const [voicesError, setVoicesError] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [result, setResult] = useState<PodcastResult | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [voicesFetchFailed, setVoicesFetchFailed] = useState(false);
 
-  // On modal open, fetch the user's voices and filter to only those usable on free tier.
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     setIsLoadingVoices(true);
-    setVoicesError(null);
+    setVoicesFetchFailed(false);
     invoke<ElevenLabsVoice[]>("list_elevenlabs_voices")
       .then((fetched) => {
         if (cancelled) return;
-        const usable = filterUsableVoices(fetched);
-        setVoices(usable);
-        if (usable.length > 0) {
-          setVoiceId(usable[0].voice_id);
-        } else {
-          setVoiceId(CUSTOM_VOICE_VALUE);
-        }
+        const { user, library } = splitUserAndLibrary(fetched);
+        setUserVoices(user);
+        if (library.length > 0) setLibraryVoices(library);
+        if (user.length > 0) setVoiceId(user[0].voice_id);
       })
       .catch((err) => {
         if (cancelled) return;
-        const msg = err?.toString() ?? "Could not fetch voices.";
-        setVoicesError(msg);
-        setVoiceId(CUSTOM_VOICE_VALUE);
+        console.warn("Could not fetch ElevenLabs voices:", err);
+        setVoicesFetchFailed(true);
       })
       .finally(() => {
         if (!cancelled) setIsLoadingVoices(false);
@@ -111,24 +126,11 @@ export const PodcastGeneratorModal: FC<Props> = ({
     };
   }, [isOpen]);
 
-  const reset = () => {
-    setFocus("");
-    setLengthMinutes(3);
-    setVoiceId(voices[0]?.voice_id ?? CUSTOM_VOICE_VALUE);
-    setCustomVoiceId("");
-    setResult(null);
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    setAudioUrl(null);
-  };
-
   const handleClose = () => {
-    if (!isGenerating) {
-      reset();
-      onClose();
-    }
+    onClose();
   };
 
-  const handleGenerate = async () => {
+  const handleSubmit = () => {
     if (!plainText.trim()) {
       toast({
         title: "Nothing to generate from",
@@ -152,77 +154,16 @@ export const PodcastGeneratorModal: FC<Props> = ({
       return;
     }
 
-    setIsGenerating(true);
-    setResult(null);
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-      setAudioUrl(null);
-    }
-    try {
-      const res = await invoke<PodcastResult>("generate_podcast_from_document", {
-        plainText,
-        provider,
-        modelId,
-        focus: focus.trim() || null,
-        lengthMinutes,
-        voiceId: effectiveVoiceId,
-      });
-      setResult(res);
+    onSubmit({
+      plainText,
+      provider,
+      modelId,
+      focus: focus.trim() || null,
+      lengthMinutes,
+      voiceId: effectiveVoiceId,
+    });
 
-      // Load the saved MP3 into a blob URL so the inline <audio> can play it
-      try {
-        const bytes = await readBinaryFile(res.file_path);
-        const blob = new Blob([new Uint8Array(bytes).buffer], { type: "audio/mpeg" });
-        setAudioUrl(URL.createObjectURL(blob));
-      } catch (e) {
-        // Fallback: try the Tauri file URL converter
-        try {
-          setAudioUrl(convertFileSrc(res.file_path));
-        } catch {
-          console.warn("Couldn't load audio for playback; download still works.");
-        }
-      }
-    } catch (error: any) {
-      console.error("Podcast generation failed:", error);
-      toast({
-        title: "Couldn't generate podcast",
-        description: error?.toString() || "An unexpected error occurred.",
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "bottom-right",
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!result) return;
-    try {
-      const filePath = await save({
-        defaultPath: `podcast-${Date.now()}.mp3`,
-        filters: [{ name: "Audio", extensions: ["mp3"] }],
-      });
-      if (filePath) {
-        const bytes = await readBinaryFile(result.file_path);
-        await writeBinaryFile(filePath, bytes);
-        toast({
-          title: "Podcast saved",
-          status: "success",
-          duration: 3000,
-          position: "bottom-right",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Save failed",
-        description: error?.toString() || "Could not save file.",
-        status: "error",
-        duration: 4000,
-        position: "bottom-right",
-      });
-    }
+    onClose();
   };
 
   return (
@@ -235,193 +176,119 @@ export const PodcastGeneratorModal: FC<Props> = ({
             <Text>Generate podcast</Text>
           </Flex>
         </ModalHeader>
-        <ModalCloseButton isDisabled={isGenerating} />
+        <ModalCloseButton />
 
         <ModalBody>
-          {!result ? (
-            <Flex direction="column" gap={4}>
-              <Box>
-                <Text fontSize="sm" fontWeight="500" mb={1}>
-                  Focus or style{" "}
-                  <Text as="span" color="gray.500" fontWeight="400">
-                    (optional)
-                  </Text>
+          <Flex direction="column" gap={4}>
+            <Box>
+              <Text fontSize="sm" fontWeight="500" mb={1}>
+                Focus or style{" "}
+                <Text as="span" color="gray.500" fontWeight="400">
+                  (optional)
                 </Text>
-                <Textarea
-                  value={focus}
-                  onChange={(e) => setFocus(e.target.value)}
-                  placeholder="e.g., explain it like I'm new to the topic, focus on the action items"
-                  size="sm"
-                  rows={3}
-                  isDisabled={isGenerating}
-                />
-              </Box>
+              </Text>
+              <Textarea
+                value={focus}
+                onChange={(e) => setFocus(e.target.value)}
+                placeholder="e.g., explain it like I'm new to the topic, focus on the action items"
+                size="sm"
+                rows={3}
+              />
+            </Box>
 
-              <Box>
-                <Text fontSize="sm" fontWeight="500" mb={2}>
-                  Length
+            <Box>
+              <Text fontSize="sm" fontWeight="500" mb={2}>
+                Length
+              </Text>
+              <HStack spacing={2}>
+                {LENGTH_OPTIONS.map(({ minutes, label }) => (
+                  <Button
+                    key={minutes}
+                    size="sm"
+                    variant={lengthMinutes === minutes ? "solid" : "outline"}
+                    colorScheme={lengthMinutes === minutes ? "blue" : "gray"}
+                    onClick={() => setLengthMinutes(minutes)}
+                    borderRadius="full"
+                    minW="60px"
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </HStack>
+            </Box>
+
+            <Box>
+              <Flex justify="space-between" align="center" mb={2}>
+                <Text fontSize="sm" fontWeight="500">
+                  Voice
                 </Text>
-                <HStack spacing={2}>
-                  {LENGTH_OPTIONS.map(({ minutes, label }) => (
-                    <Button
-                      key={minutes}
-                      size="sm"
-                      variant={lengthMinutes === minutes ? "solid" : "outline"}
-                      colorScheme={lengthMinutes === minutes ? "blue" : "gray"}
-                      onClick={() => setLengthMinutes(minutes)}
-                      isDisabled={isGenerating}
-                      borderRadius="full"
-                      minW="60px"
-                    >
-                      {label}
-                    </Button>
-                  ))}
-                </HStack>
-              </Box>
-
-              <Box>
-                <Flex justify="space-between" align="center" mb={2}>
-                  <Text fontSize="sm" fontWeight="500">
-                    Voice
-                  </Text>
-                  {isLoadingVoices && <Spinner size="xs" color="gray.400" />}
-                </Flex>
-                <Select
-                  value={voiceId}
-                  onChange={(e) => setVoiceId(e.target.value)}
-                  size="sm"
-                  isDisabled={isGenerating || isLoadingVoices}
-                >
-                  {voices.map((v) => (
+                {isLoadingVoices && <Spinner size="xs" color="gray.400" />}
+              </Flex>
+              <Select
+                value={voiceId}
+                onChange={(e) => setVoiceId(e.target.value)}
+                size="sm"
+                isDisabled={isLoadingVoices}
+              >
+                {userVoices.length > 0 && (
+                  <optgroup label="Your voices">
+                    {userVoices.map((v) => (
+                      <option key={v.voice_id} value={v.voice_id}>
+                        {v.name}
+                        {v.category ? ` (${v.category})` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Library (paid plan required)">
+                  {libraryVoices.map((v) => (
                     <option key={v.voice_id} value={v.voice_id}>
                       {v.name}
-                      {v.category ? ` (${v.category})` : ""}
                     </option>
                   ))}
-                  <option value={CUSTOM_VOICE_VALUE}>Custom voice ID…</option>
-                </Select>
-                {voiceId === CUSTOM_VOICE_VALUE && (
-                  <Input
-                    mt={2}
-                    size="sm"
-                    value={customVoiceId}
-                    onChange={(e) => setCustomVoiceId(e.target.value)}
-                    placeholder="Paste an ElevenLabs voice ID"
-                    isDisabled={isGenerating}
-                  />
-                )}
-                {!isLoadingVoices && voices.length === 0 && !voicesError && (
-                  <Text fontSize="xs" color="orange.600" mt={1.5}>
-                    No usable voices in your library. ElevenLabs' premade library voices
-                    require a paid plan via API. Either{" "}
-                    <Link
-                      href="https://elevenlabs.io/app/voice-lab"
-                      isExternal
-                      color="blue.500"
-                      textDecoration="underline"
-                    >
-                      add a custom voice
-                    </Link>{" "}
-                    (Voice Design / Cloning) or upgrade your plan.
-                  </Text>
-                )}
-                {voicesError && (
-                  <Text fontSize="xs" color="orange.600" mt={1.5}>
-                    Couldn't load voices: {voicesError}
-                  </Text>
-                )}
-              </Box>
-
-              {isGenerating && (
-                <Flex align="center" gap={2} py={4} color="gray.600">
-                  <Spinner size="sm" />
-                  <Text fontSize="sm">
-                    Writing script and synthesizing audio… this can take 30-60 seconds.
-                  </Text>
-                </Flex>
+                </optgroup>
+                <option value={CUSTOM_VOICE_VALUE}>Custom voice ID…</option>
+              </Select>
+              {voiceId === CUSTOM_VOICE_VALUE && (
+                <Input
+                  mt={2}
+                  size="sm"
+                  value={customVoiceId}
+                  onChange={(e) => setCustomVoiceId(e.target.value)}
+                  placeholder="Paste an ElevenLabs voice ID"
+                />
               )}
-            </Flex>
-          ) : (
-            <Flex direction="column" gap={4}>
-              <Box>
-                {audioUrl ? (
-                  <audio
-                    ref={audioRef}
-                    src={audioUrl}
-                    controls
-                    style={{ width: "100%" }}
-                  />
-                ) : (
-                  <Text fontSize="sm" color="gray.500">
-                    Audio saved — playback unavailable in app, but download works.
-                  </Text>
-                )}
-              </Box>
-
-              <Box>
-                <Text fontSize="sm" fontWeight="500" mb={1}>
-                  Script
-                </Text>
-                <Box
-                  p={3}
-                  borderRadius="md"
-                  border="1px solid"
-                  borderColor="gray.200"
-                  bg="gray.50"
-                  maxH="240px"
-                  overflowY="auto"
-                  fontSize="sm"
-                  color="gray.700"
-                  whiteSpace="pre-wrap"
+              <Text fontSize="xs" color="gray.500" mt={1.5}>
+                Library voices need a paid ElevenLabs plan via API. Free-tier users:
+                pick one of "Your voices" (clone/design at{" "}
+                <Link
+                  href="https://elevenlabs.io/app/voice-lab"
+                  isExternal
+                  color="blue.500"
+                  textDecoration="underline"
                 >
-                  {result.script}
-                </Box>
-                <Text fontSize="xs" color="gray.500" mt={1}>
-                  {result.script_chars.toLocaleString()} characters
-                </Text>
-              </Box>
-            </Flex>
-          )}
+                  Voice Lab
+                </Link>
+                ).
+                {voicesFetchFailed && (
+                  <> Voice list couldn't auto-load — using preset library.</>
+                )}
+              </Text>
+            </Box>
+
+            <Text fontSize="xs" color="gray.500" pt={2} borderTop="1px solid" borderColor="gray.100">
+              Generation takes 30-60 seconds. We'll notify you when it's ready — feel free to keep working.
+            </Text>
+          </Flex>
         </ModalBody>
 
         <ModalFooter gap={2}>
-          {!result ? (
-            <>
-              <Button variant="ghost" onClick={handleClose} isDisabled={isGenerating}>
-                Cancel
-              </Button>
-              <Button
-                colorScheme="blue"
-                onClick={handleGenerate}
-                isLoading={isGenerating}
-                loadingText="Generating"
-                leftIcon={<Headphones size={14} />}
-              >
-                Generate
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                variant="ghost"
-                leftIcon={<RefreshCw size={14} />}
-                onClick={() => {
-                  setResult(null);
-                  if (audioUrl) URL.revokeObjectURL(audioUrl);
-                  setAudioUrl(null);
-                }}
-              >
-                Regenerate
-              </Button>
-              <Button
-                colorScheme="blue"
-                leftIcon={<Download size={14} />}
-                onClick={handleDownload}
-              >
-                Save MP3
-              </Button>
-            </>
-          )}
+          <Button variant="ghost" onClick={handleClose}>
+            Cancel
+          </Button>
+          <Button colorScheme="blue" onClick={handleSubmit} leftIcon={<Headphones size={14} />}>
+            Generate
+          </Button>
         </ModalFooter>
       </ModalContent>
     </Modal>

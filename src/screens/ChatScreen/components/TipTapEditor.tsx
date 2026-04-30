@@ -26,7 +26,9 @@ import {
 } from '@chakra-ui/react';
 import { Bold, Italic, List, Undo, Redo, FolderInput, Search, Sparkles, Mic, Square, NotebookPen, Presentation, Wand2, Headphones } from "lucide-react";
 import { SlideGeneratorModal } from "./SlideGeneratorModal";
-import { PodcastGeneratorModal } from "./PodcastGeneratorModal";
+import { PodcastGeneratorModal, type PodcastGenerationParams } from "./PodcastGeneratorModal";
+import { PodcastPlayerModal, type PodcastResult } from "./PodcastPlayerModal";
+import { useNotify } from "./notifications";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { marked } from "marked";
@@ -57,6 +59,10 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [isSlideModalOpen, setIsSlideModalOpen] = useState(false);
   const [isPodcastModalOpen, setIsPodcastModalOpen] = useState(false);
   const [generatorPlainText, setGeneratorPlainText] = useState("");
+  // Background podcast job + completed result for the player modal
+  const [podcastResult, setPodcastResult] = useState<PodcastResult | null>(null);
+  const [isPodcastPlayerOpen, setIsPodcastPlayerOpen] = useState(false);
+  const [isPodcastJobRunning, setIsPodcastJobRunning] = useState(false);
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [isPreparingRecording, setIsPreparingRecording] = useState(false);
@@ -73,6 +79,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const notify = useNotify();
   const { settings } = useGlobalSettings();
   
   // Add ref for debouncing editor updates to prevent excessive re-renders
@@ -614,6 +621,58 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const handleOpenSlideGenerator = () => openGeneratorModal("slides");
   const handleOpenPodcastGenerator = () => openGeneratorModal("podcast");
 
+  // Fire-and-forget podcast generation. The modal closes immediately; we show a
+  // soft notification while the backend works and another (with a "Listen" action) when it's done.
+  const startPodcastJob = (params: PodcastGenerationParams) => {
+    if (isPodcastJobRunning) {
+      notify({
+        title: "A podcast is already generating",
+        description: "Wait for the current one to finish before starting another.",
+        status: "info",
+        duration: 3000,
+      });
+      return;
+    }
+    setIsPodcastJobRunning(true);
+    notify({
+      title: "Generating podcast",
+      description: "We'll notify you when it's ready. Keep working — this takes 30-60 seconds.",
+      status: "loading",
+      duration: 5000,
+    });
+
+    invoke<PodcastResult>("generate_podcast_from_document", {
+      plainText: params.plainText,
+      provider: params.provider,
+      modelId: params.modelId,
+      focus: params.focus,
+      lengthMinutes: params.lengthMinutes,
+      voiceId: params.voiceId,
+    })
+      .then((res) => {
+        setPodcastResult(res);
+        notify({
+          title: "Podcast ready",
+          description: `${res.script_chars.toLocaleString()} characters of audio waiting.`,
+          status: "success",
+          duration: null,
+          action: { label: "Listen", onClick: () => setIsPodcastPlayerOpen(true) },
+        });
+      })
+      .catch((err: any) => {
+        console.error("Podcast generation failed:", err);
+        notify({
+          title: "Podcast generation failed",
+          description: err?.toString() || "An unexpected error occurred.",
+          status: "error",
+          duration: 8000,
+        });
+      })
+      .finally(() => {
+        setIsPodcastJobRunning(false);
+      });
+  };
+
   return (
     <Box width="100%" padding="var(--space-l)" maxWidth="900px" mx="auto">
           <Flex
@@ -934,6 +993,12 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
             plainText={generatorPlainText}
             provider={getProviderAndModel().provider}
             modelId={getProviderAndModel().modelId}
+            onSubmit={startPodcastJob}
+          />
+          <PodcastPlayerModal
+            isOpen={isPodcastPlayerOpen}
+            onClose={() => setIsPodcastPlayerOpen(false)}
+            result={podcastResult}
           />
     </Box>
   );
