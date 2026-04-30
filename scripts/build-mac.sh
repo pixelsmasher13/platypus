@@ -52,6 +52,24 @@ if [[ "$SKIP_UPLOAD" -eq 0 ]]; then
   fi
 fi
 
+# ── Pre-build cleanup ──
+# Tauri's bundle_dmg.sh calls `hdiutil convert ... -o <path>` WITHOUT -ov, so any
+# leftover .dmg at the target path aborts the build with no clear error. The script
+# also leaves `rw.<name>.dmg` read-write templates and may leave a /Volumes/Platypus
+# mount around after a failed run. Wipe all three before building.
+echo "==> Pre-build cleanup (stale DMGs, rw templates, leftover mounts)..."
+rm -f src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null || true
+rm -f src-tauri/target/release/bundle/macos/*.dmg 2>/dev/null || true
+rm -f src-tauri/target/release/bundle/macos/rw.*.dmg 2>/dev/null || true
+
+# Detach any leftover Platypus mount from a prior failed run
+for vol in /Volumes/Platypus*; do
+  if [[ -d "$vol" ]]; then
+    echo "    detaching stale mount: $vol"
+    hdiutil detach "$vol" -force 2>/dev/null || true
+  fi
+done
+
 # ── Build ──
 echo "==> Building Tauri macOS app (signed + notarized)..."
 # Run tauri build directly (skips the tauri:build npm script which references a missing plist fix)
