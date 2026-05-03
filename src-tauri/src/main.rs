@@ -28,6 +28,7 @@ use crate::engine::chat_engine_local::{name_conversation_local, send_prompt_to_l
 use crate::engine::clean_up_engine::clean_up;
 use crate::engine::document_cleanup_engine::{clean_up_document_with_llm, summarize_as_meeting_notes, generate_slides_from_document};
 use crate::engine::podcast_generator::{generate_podcast_from_document, list_elevenlabs_voices};
+use crate::engine::url_ingestion::ingest_url_command;
 use crate::engine::similarity_search_engine::SyncSimilaritySearch;
 use crate::entity::chat_item::{Chat, StoredMessage};
 use crate::entity::permission::Permission;
@@ -174,6 +175,7 @@ async fn main() {
             read_audio_file,
             transcribe_audio,
             extract_document_text,
+            ingest_url_command,
             clean_up_document_with_llm,
             summarize_as_meeting_notes,
             generate_slides_from_document,

@@ -28,7 +28,14 @@ import {
   Button,
   useDisclosure,
   useToast,
-  Spinner
+  Spinner,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton,
 } from "@chakra-ui/react";
 import {
   Search,
@@ -43,6 +50,7 @@ import {
   Mic,
   Square,
   ClipboardPaste,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { useGlobalSettings } from "../../Providers/SettingsProvider";
 import { Text } from "@platypus-app/design";
@@ -413,6 +421,9 @@ const ProjectSelector: FC<{
   const [liveTranscript, setLiveTranscript] = useState("");
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [isIngestingUrl, setIsIngestingUrl] = useState(false);
   const recordingStartTime = useRef<number | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptUnlistenRef = useRef<(() => void) | null>(null);
@@ -1014,6 +1025,76 @@ const ProjectSelector: FC<{
     }
   };
 
+  // Fetch a URL, run it through Readability, and save the result as a new
+  // document. Title comes from the page's <title>; the editor stores the
+  // cleaned HTML and a "Source: <url>" footer so users can trace where
+  // ingested content came from.
+  const handleUrlImport = async () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+
+    setIsIngestingUrl(true);
+    try {
+      const page = await invoke<{
+        title: string;
+        html: string;
+        markdown: string;
+        url: string;
+      }>("ingest_url_command", { url: trimmed });
+
+      let newActivityId: number | undefined;
+      if (selectedProject) {
+        newActivityId = await onAddBlankActivity();
+      } else {
+        newActivityId = await onAddUnassignedActivity();
+      }
+
+      if (!newActivityId) {
+        throw new Error("Could not create new document");
+      }
+
+      const documentName = page.title.trim() || page.url;
+      await onUpdateActivityName(newActivityId, documentName);
+
+      const sourceFooter = `<p><br/></p><hr/><p><em>Source: <a href="${page.url}" target="_blank" rel="noopener noreferrer">${page.url}</a></em></p>`;
+      const fullHtml = `${page.html}${sourceFooter}`;
+
+      await invoke("update_project_activity_text", {
+        activityId: newActivityId,
+        text: fullHtml,
+      });
+
+      invoke("vectorize_document_chunks", { documentId: newActivityId })
+        .catch((e) => console.log("Vectorization skipped:", e));
+
+      onSelectActivity(newActivityId);
+      setIsUrlModalOpen(false);
+      setUrlInput("");
+
+      toast({
+        title: "Page imported",
+        description: documentName.length > 60
+          ? `${documentName.substring(0, 60)}...`
+          : documentName,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("URL import error:", message);
+      toast({
+        title: "Could not import URL",
+        description: message,
+        status: "error",
+        duration: 6000,
+        isClosable: true,
+      });
+    } finally {
+      setIsIngestingUrl(false);
+    }
+  };
+
   // Select a document without forcing a project switch
   const handleDocumentSelect = (document: ActivityDocument) => {
     onSelectActivity(document.id);
@@ -1137,16 +1218,26 @@ const ProjectSelector: FC<{
               />
             </Tooltip>
 
-            {/* Button for importing files */}
-            <Tooltip label="Import file (PDF, DOCX, TXT, MD)">
-              <IconButton
-                aria-label="Import file"
-                icon={<FileUp size={16} />}
-                size="sm"
-                variant="ghost"
-                onClick={handleFileImport}
-              />
-            </Tooltip>
+            {/* Combined import menu — file or URL in one place */}
+            <Menu>
+              <Tooltip label="Import">
+                <MenuButton
+                  as={IconButton}
+                  aria-label="Import"
+                  icon={<FileUp size={16} />}
+                  size="sm"
+                  variant="ghost"
+                />
+              </Tooltip>
+              <MenuList>
+                <MenuItem icon={<FileUp size={14} />} onClick={handleFileImport}>
+                  Import file… <ChakraText as="span" color="gray.500" fontSize="xs" ml={2}>PDF, DOCX, TXT, MD</ChakraText>
+                </MenuItem>
+                <MenuItem icon={<LinkIcon size={14} />} onClick={() => setIsUrlModalOpen(true)}>
+                  Import from URL…
+                </MenuItem>
+              </MenuList>
+            </Menu>
 
             {/* Button for pasting from clipboard */}
             <Tooltip label="Paste from clipboard">
@@ -1382,6 +1473,63 @@ const ProjectSelector: FC<{
           </Flex>
         )}
       </Box>
+
+      {/* URL ingestion modal — fetches a page, runs Readability, saves as a new note. */}
+      <Modal
+        isOpen={isUrlModalOpen}
+        onClose={() => {
+          if (isIngestingUrl) return;
+          setIsUrlModalOpen(false);
+          setUrlInput("");
+        }}
+        isCentered
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Import from URL</ModalHeader>
+          <ModalCloseButton isDisabled={isIngestingUrl} />
+          <ModalBody>
+            <Input
+              autoFocus
+              placeholder="https://example.com/article"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isIngestingUrl) {
+                  handleUrlImport();
+                }
+              }}
+              isDisabled={isIngestingUrl}
+            />
+            <ChakraText mt={2} fontSize="xs" color="gray.500">
+              We'll extract the main article content and save it as a new note.
+              JavaScript-rendered pages may not work.
+            </ChakraText>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="ghost"
+              mr={3}
+              onClick={() => {
+                setIsUrlModalOpen(false);
+                setUrlInput("");
+              }}
+              isDisabled={isIngestingUrl}
+            >
+              Cancel
+            </Button>
+            <Button
+              colorScheme="teal"
+              onClick={handleUrlImport}
+              isLoading={isIngestingUrl}
+              loadingText="Fetching..."
+              isDisabled={!urlInput.trim()}
+            >
+              Import
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Flex>
   );
 };
