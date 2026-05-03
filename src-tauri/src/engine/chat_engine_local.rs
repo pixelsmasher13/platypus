@@ -1,8 +1,8 @@
 use crate::configuration::state::ServiceAccess;
 use crate::engine::similarity_search_engine::DEFAULT_RAG_TOP_K;
 use crate::engine::project_vector_engine::search_project_vectors;
+use crate::engine::rag_prompt::{build_grounded_context, grounded_system_prompt};
 use crate::repository::settings_repository::get_setting;
-use crate::repository::chunk_repository::{get_chunks_by_ids, get_chunk_sources, ChunkSource};
 use log::{debug, error};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
@@ -91,26 +91,12 @@ pub async fn send_prompt_to_local(
 
             match search_project_vectors(&app_handle, pid, &user_prompt, rag_top_k, &setting_openai.setting_value).await {
                 Ok(similar_chunk_ids) if !similar_chunk_ids.is_empty() => {
-                    let chunk_ids_to_fetch: Vec<i64> = similar_chunk_ids
-                        .iter()
-                        .map(|(id, _)| *id)
-                        .collect();
+                    debug!("Retrieved {} similar chunks from project index", similar_chunk_ids.len());
 
-                    debug!("Retrieved {} similar chunks from project index", chunk_ids_to_fetch.len());
+                    let (numbered_context, sources) = app_handle
+                        .db(|conn| build_grounded_context(conn, &similar_chunk_ids))
+                        .map_err(|e| format!("Failed to build RAG context: {}", e))?;
 
-                    let chunks = app_handle
-                        .db(|conn| get_chunks_by_ids(conn, &chunk_ids_to_fetch))
-                        .map_err(|e| format!("Failed to get chunk content: {}", e))?;
-
-                    // Get source information for citations (sorted by relevance score)
-                    let sources: Vec<ChunkSource> = app_handle
-                        .db(|conn| get_chunk_sources(conn, &similar_chunk_ids))
-                        .unwrap_or_else(|e| {
-                            error!("Failed to get chunk sources: {}", e);
-                            vec![]
-                        });
-
-                    // Emit sources to frontend
                     if !sources.is_empty() {
                         if let Err(e) = app_handle
                             .get_window("main")
@@ -121,12 +107,7 @@ pub async fn send_prompt_to_local(
                         }
                     }
 
-                    for (index, chunk) in chunks.iter().enumerate() {
-                        filtered_context.push_str(&format!(
-                            "Chunk {} (from document {}):\n{}\n\n",
-                            index + 1, chunk.document_id, chunk.chunk_text
-                        ));
-                    }
+                    filtered_context = numbered_context;
                 }
                 Ok(_) => {
                     debug!("No vectorized chunks found for project");
@@ -138,15 +119,11 @@ pub async fn send_prompt_to_local(
         }
     }
 
-    // Build system prompt - include RAG context only on first message
+    const BASE_SYSTEM: &str = "You are Platypus, a friendly and helpful AI note-taking assistant running locally via Ollama. Keep your tone warm and helpful. Provide answers in markdown format.";
     let system_prompt = if !filtered_context.is_empty() {
-        format!(
-            "You are Platypus, a friendly and helpful AI note-taking assistant running locally via Ollama. Keep your tone warm and helpful. Provide answers in markdown format.\n\n\
-            The following document chunks were retrieved from the user's project and may help answer their question. Use them if relevant, otherwise ignore them:\n\n{}",
-            filtered_context
-        )
+        grounded_system_prompt(BASE_SYSTEM, &filtered_context)
     } else {
-        "You are Platypus, a friendly and helpful AI note-taking assistant running locally via Ollama. Keep your tone warm and helpful. Provide answers in markdown format.".to_string()
+        BASE_SYSTEM.to_string()
     };
 
     // Build Ollama messages using native multi-turn format

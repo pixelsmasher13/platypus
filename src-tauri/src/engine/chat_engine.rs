@@ -9,8 +9,8 @@ use tauri::{AppHandle, Manager};
 use crate::configuration::state::ServiceAccess;
 use crate::engine::similarity_search_engine::DEFAULT_RAG_TOP_K;
 use crate::engine::project_vector_engine::search_project_vectors_live;
+use crate::engine::rag_prompt::{build_grounded_context, grounded_system_prompt};
 use crate::repository::settings_repository::get_setting;
-use crate::repository::chunk_repository::{get_chunks_by_ids, get_chunk_sources, ChunkSource};
 
 #[derive(Serialize)]
 struct ClaudeRequest {
@@ -108,36 +108,21 @@ pub async fn send_prompt_to_llm(
             .unwrap_or_default();
         debug!("User Prompt: {}", user_prompt);
 
-        let mut context = String::new();
-
         // Use per-project vector index if project_id is provided
         if let Some(pid) = project_id {
             debug!("Using per-project vector search for project {}", pid);
-            
-            // Search directly in project's vector index
+
             match search_project_vectors_live(&app_handle, pid, &user_prompt, rag_top_k, &setting_openai.setting_value).await {
                 Ok(similar_chunk_ids) if !similar_chunk_ids.is_empty() => {
-                    let chunk_ids_to_fetch: Vec<i64> = similar_chunk_ids
-                        .iter()
-                        .map(|(id, _)| *id)
-            .collect();
+                    debug!("Retrieved {} similar chunks from project index", similar_chunk_ids.len());
 
-                    debug!("Retrieved {} similar chunks from project index", chunk_ids_to_fetch.len());
-                    
-                    // Get chunk content
-                    let chunks = app_handle
-                        .db(|conn| get_chunks_by_ids(conn, &chunk_ids_to_fetch))
-                        .map_err(|e| format!("Failed to get chunk content: {}", e))?;
-                    
-                    // Get source information for citations (sorted by relevance score)
-                    let sources: Vec<ChunkSource> = app_handle
-                        .db(|conn| get_chunk_sources(conn, &similar_chunk_ids))
-                        .unwrap_or_else(|e| {
-                            error!("Failed to get chunk sources: {}", e);
-                            vec![]
-                        });
-                    
-                    // Emit sources to frontend
+                    // Build the numbered context block + sources in matching score order.
+                    // Numbering [1]..[n] in the prompt MUST line up with `sources[n-1]`
+                    // so the LLM's inline citations resolve correctly on the frontend.
+                    let (numbered_context, sources) = app_handle
+                        .db(|conn| build_grounded_context(conn, &similar_chunk_ids))
+                        .map_err(|e| format!("Failed to build RAG context: {}", e))?;
+
                     if !sources.is_empty() {
                         if let Err(e) = app_handle
                             .get_window("main")
@@ -147,23 +132,14 @@ pub async fn send_prompt_to_llm(
                             error!("Failed to emit sources: {}", e);
                         }
                     }
-                    
-                    // Build context from chunks (no relevance filtering needed - chunks are small)
-                    for (index, chunk) in chunks.iter().enumerate() {
-                        context.push_str(&format!(
-                            "Chunk {} (from document {}):\n{}\n\n",
-                            index + 1, chunk.document_id, chunk.chunk_text
-                        ));
-                    }
-                    
-                    // Set filtered_context directly since chunks are already relevant
-                    filtered_context = context.clone();
+
+                    filtered_context = numbered_context;
                 }
                 Ok(_) => {
-                    debug!("No vectorized chunks found for project, falling back to legacy search");
+                    debug!("No vectorized chunks found for project, skipping RAG");
                 }
                 Err(e) => {
-                    debug!("Project vector search failed: {}, falling back to legacy search", e);
+                    debug!("Project vector search failed: {}, skipping RAG", e);
                 }
             }
         }
@@ -182,10 +158,7 @@ pub async fn send_prompt_to_llm(
     // on every turn.
     const BASE_SYSTEM: &str = "You are Platypus, a friendly and helpful AI note-taking assistant powered by Anthropic. Keep your tone warm and helpful. Provide answers in markdown format.";
     let system_prompt = if !filtered_context.is_empty() {
-        format!(
-            "{}\n\nThe following document chunks were retrieved from the user's project and may help answer their question. Use them if relevant, otherwise ignore them:\n\n{}",
-            BASE_SYSTEM, filtered_context
-        )
+        grounded_system_prompt(BASE_SYSTEM, &filtered_context)
     } else if !combined_activity_text.is_empty() {
         format!(
             "{}\n\nContext from selected documents:\n{}",
