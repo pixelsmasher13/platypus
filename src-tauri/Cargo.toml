@@ -24,6 +24,7 @@ tauri = { version = "1.5.2", features = [
     "api-all",
     "process-command-api",
     "system-tray",
+    "macos-private-api",
 ] }
 screenshots = "0.8.10"
 image = "0.25.1"

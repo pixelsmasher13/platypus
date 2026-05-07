@@ -28,6 +28,7 @@ use crate::engine::chat_engine_local::{name_conversation_local, send_prompt_to_l
 use crate::engine::clean_up_engine::clean_up;
 use crate::engine::document_cleanup_engine::{clean_up_document_with_llm, summarize_as_meeting_notes, generate_slides_from_document};
 use crate::engine::podcast_generator::{generate_podcast_from_document, list_elevenlabs_voices};
+use crate::engine::meeting_popup::{meeting_popup_dismiss, meeting_popup_start_recording};
 use crate::engine::url_ingestion::ingest_url_command;
 use crate::engine::similarity_search_engine::SyncSimilaritySearch;
 use crate::entity::chat_item::{Chat, StoredMessage};
@@ -185,6 +186,8 @@ async fn main() {
             download_whisper_model,
             init_whisper_model,
             get_transcript,
+            meeting_popup_dismiss,
+            meeting_popup_start_recording,
         ])
         .manage(AppState {
             db: Default::default(),

@@ -12,6 +12,7 @@
     "version": "0.0.1"
   },
   "tauri": {
+    "macOSPrivateApi": true,
     "systemTray": {
       "iconPath": "icons/icon_64.png",
       "iconAsTemplate": true

@@ -6,37 +6,40 @@ import { Mic } from "lucide-react";
 
 const AUTO_DISMISS_MS = 30_000; // 30 seconds
 
+const shortenAppName = (name: string): string => {
+  const trimmed = name.trim();
+  if (trimmed.toLowerCase().startsWith("microsoft ")) {
+    return trimmed.slice("Microsoft ".length);
+  }
+  return trimmed;
+};
+
 export const MeetingDetectionBanner = () => {
   const [meetingApp, setMeetingApp] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const unlisten = listen<string>("meeting-detected", async (event) => {
+    const unlistenDetected = listen<string>("meeting-detected", async (event) => {
       setMeetingApp(event.payload);
 
-      console.log("[MeetingDetection] Event received:", event.payload);
-
-      // Bring Platypus to the front — macOS prevents focus stealing,
-      // so we set always-on-top until the user interacts with the banner.
-      try {
-        await appWindow.unminimize();
-        await appWindow.show();
-        await appWindow.setAlwaysOnTop(true);
-        await appWindow.setFocus();
-      } catch (e) {
-        console.error("Failed to focus window:", e);
-      }
-
-      // Auto-dismiss after 30s (also releases always-on-top)
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         setMeetingApp(null);
-        appWindow.setAlwaysOnTop(false).catch(() => {});
       }, AUTO_DISMISS_MS);
     });
 
+    // Dismiss the banner whenever recording is toggled — fired by the
+    // floating popup's "Start notes" button, the system-tray menu, and
+    // our own button below. Single source of truth means the banner
+    // disappears the moment recording starts, regardless of trigger.
+    const unlistenToggle = listen("toggle_recording", () => {
+      setMeetingApp(null);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    });
+
     return () => {
-      unlisten.then((f) => f());
+      unlistenDetected.then((f) => f());
+      unlistenToggle.then((f) => f());
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
@@ -46,16 +49,13 @@ export const MeetingDetectionBanner = () => {
   const dismissBanner = () => {
     setMeetingApp(null);
     if (timerRef.current) clearTimeout(timerRef.current);
-    appWindow.setAlwaysOnTop(false).catch(() => {});
   };
 
   const handleStartRecording = () => {
-    // Emit the same event the system tray uses to toggle recording
     appWindow.emit("toggle_recording", { data: true });
-    dismissBanner();
-  };
-
-  const handleDismiss = () => {
+    // The toggle_recording listener above will clear meetingApp; the
+    // explicit dismiss here is just defensive in case the event-loop
+    // round-trip is delayed.
     dismissBanner();
   };
 
@@ -74,7 +74,7 @@ export const MeetingDetectionBanner = () => {
       <Flex align="center" justify="center" gap={4}>
         <Mic size={16} />
         <Text fontWeight="bold" fontSize="sm">
-          {meetingApp} meeting detected
+          {shortenAppName(meetingApp)} meeting detected
         </Text>
         <Button
           size="sm"
@@ -82,9 +82,9 @@ export const MeetingDetectionBanner = () => {
           variant="solid"
           onClick={handleStartRecording}
         >
-          Start Recording
+          Start notes
         </Button>
-        <CloseButton size="sm" onClick={handleDismiss} />
+        <CloseButton size="sm" onClick={dismissBanner} />
       </Flex>
     </Box>
   );

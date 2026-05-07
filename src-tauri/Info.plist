@@ -4,5 +4,16 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>Platypus needs microphone access to record voice notes</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.platypusnotes.dev</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>platypus</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

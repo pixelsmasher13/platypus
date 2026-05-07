@@ -457,6 +457,26 @@ export const ChatScreen: FC = () => {
     }
   }, [selectedChatId]);
 
+  // Soft reset on project change: keep the chat ID + history, but force the
+  // next message to re-run RAG against the new project. Without this, the
+  // backend short-circuits retrieval after turn 1 (chat_engine.rs only fires
+  // RAG when is_first_message=true), which silently leaves the model with
+  // the previous project's chunks cached in the system prompt.
+  const previousProjectIdRef = useRef<number | undefined | null>(undefined);
+  useEffect(() => {
+    const currentProjectId = state.selectedProject ?? null;
+    // Skip the initial render — we don't want to trigger on mount.
+    if (previousProjectIdRef.current === undefined) {
+      previousProjectIdRef.current = currentProjectId;
+      return;
+    }
+    if (previousProjectIdRef.current !== currentProjectId) {
+      console.log("[ChatScreen] Project scope changed — next message will re-run RAG");
+      setIsFirstMessage(true);
+      previousProjectIdRef.current = currentProjectId;
+    }
+  }, [state.selectedProject]);
+
   const generateName = async (chatId: number, userInput: string) => {
     try {
       const name = settings.api_choice === "openai"
