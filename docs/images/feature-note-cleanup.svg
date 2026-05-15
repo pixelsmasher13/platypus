@@ -48,7 +48,7 @@
     <text x="37" y="3"
           text-anchor="middle"
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
-          font-size="11"
+          font-size="13"
           font-weight="700"
           fill="#B91C1C"
           letter-spacing="0.5">RAW</text>
@@ -83,7 +83,7 @@
     <text x="23" y="-18"
           text-anchor="middle"
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
-          font-size="11"
+          font-size="13"
           font-weight="700"
           fill="#0F766E"
           letter-spacing="0.5">POLISH</text>
@@ -101,15 +101,15 @@
 
   <!-- Clean header -->
   <g transform="translate(732, 207)">
-    <rect x="0" y="-12" width="92" height="20" rx="10" fill="#F0FDFA"/>
-    <text x="46" y="3"
+    <rect x="0" y="-12" width="58" height="20" rx="10" fill="#F0FDFA"/>
+    <text x="29" y="3"
           text-anchor="middle"
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
-          font-size="11"
+          font-size="13"
           font-weight="700"
           fill="#0F766E"
-          letter-spacing="0.5">STRUCTURED</text>
-    <text x="102" y="3"
+          letter-spacing="0.5">NOTES</text>
+    <text x="68" y="3"
           font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
           font-size="13"
           font-weight="600"
