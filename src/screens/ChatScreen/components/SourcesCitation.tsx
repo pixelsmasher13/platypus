@@ -53,7 +53,7 @@ const SourceChip = styled.button`
 
   &:hover {
     background: #e2e8f0;
-    border-color: #6366f1;
+    border-color: #14b8a6;
     color: #1e293b;
   }
 `;
@@ -65,7 +65,7 @@ const SourceIcon = styled.div`
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  background: var(--accent-color, #6366f1);
+  background: var(--accent-color, #14b8a6);
   color: white;
   font-size: 10px;
   font-weight: 600;
@@ -86,8 +86,8 @@ const PassageBadge = styled.span`
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--accent-color, #6366f1);
+  background: rgba(20, 184, 166, 0.15);
+  color: var(--accent-color, #14b8a6);
   font-size: 10px;
   font-weight: 600;
   flex-shrink: 0;

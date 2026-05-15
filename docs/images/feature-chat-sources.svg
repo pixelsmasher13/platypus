@@ -1,0 +1,286 @@
+<svg viewBox="0 0 1280 680" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Chat with your notes — answers cite the source passage so you can verify">
+  <defs>
+    <linearGradient id="bg-ch" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FAFAFA"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="tealGlow-ch" cx="85%" cy="20%" r="55%">
+      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#14B8A6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cardShadow-ch" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.05"/>
+    </filter>
+    <!-- Inline citation chip (teal, matches CitationChip in message-markdown.tsx).
+         The rect's y=-1 offset means `<use y="N">` places the chip vertically
+         centered on a text baseline at y=N+12 — see chip use positions below. -->
+    <symbol id="ic" overflow="visible">
+      <rect x="0" y="-1" width="18" height="18" rx="9" fill="#CCFBF1"/>
+    </symbol>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="680" fill="url(#bg-ch)"/>
+  <rect width="1280" height="680" fill="url(#tealGlow-ch)"/>
+
+  <!-- Section label -->
+  <text x="80" y="70"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="14"
+        font-weight="600"
+        fill="#14B8A6"
+        letter-spacing="2">CHAT WITH YOUR NOTES</text>
+  <text x="80" y="108"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="32"
+        font-weight="700"
+        fill="#18181B"
+        letter-spacing="-0.8">Answers with sources you can click</text>
+  <text x="80" y="138"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="15"
+        font-weight="400"
+        fill="#71717A">HNSW vector search over your project's notes &amp; uploaded PDFs. Citations link back to the passage they came from.</text>
+
+  <!-- Chat card -->
+  <g filter="url(#cardShadow-ch)">
+    <rect x="80" y="180" width="1120" height="460" rx="14" ry="14" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1"/>
+  </g>
+  <line x1="80" y1="226" x2="1200" y2="226" stroke="#F4F4F5" stroke-width="1"/>
+
+  <!-- Chat header -->
+  <g transform="translate(112, 207)">
+    <circle cx="6" cy="0" r="5" fill="#14B8A6"/>
+    <text x="22" y="4"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="13"
+          font-weight="600"
+          fill="#27272A">Project: Transformer literature</text>
+    <text x="1168" y="4"
+          text-anchor="end"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="12"
+          font-weight="500"
+          fill="#71717A">Claude 3.7 Sonnet</text>
+  </g>
+
+  <!-- User question bubble (right-aligned, teal) -->
+  <g transform="translate(580, 256)">
+    <rect x="0" y="0" width="588" height="36" rx="14" fill="#14B8A6"/>
+    <text x="20" y="22"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          font-weight="500"
+          fill="#FFFFFF">Why did the Transformer authors abandon recurrence?</text>
+  </g>
+
+  <!-- Assistant reply -->
+  <g transform="translate(112, 322)">
+    <!-- Avatar -->
+    <circle cx="14" cy="14" r="14" fill="#F4F4F5"/>
+    <ellipse cx="12" cy="14" rx="7" ry="6" fill="#0d9488"/>
+    <ellipse cx="19" cy="15" rx="5" ry="2.5" fill="#14b8a6"/>
+    <circle cx="10" cy="12" r="1.4" fill="white"/>
+    <circle cx="10.3" cy="12" r="0.7" fill="#1e293b"/>
+
+    <text x="40" y="6"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="12"
+          font-weight="700"
+          fill="#71717A"
+          letter-spacing="0.3">PLATYPUS</text>
+
+    <!-- Line 1: "Recurrent models like LSTMs [13] and GRUs [7] had long been state-of-the-art for" -->
+    <text x="40" y="34"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">Recurrent models like LSTMs</text>
+    <use href="#ic" x="245" y="22"/>
+    <text x="254" y="35"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">13</text>
+    <text x="270" y="34"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">and GRUs</text>
+    <use href="#ic" x="338" y="22"/>
+    <text x="347" y="35"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">7</text>
+    <text x="362" y="34"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">had long been state-of-the-art for sequence</text>
+
+    <!-- Line 2: "modeling [35] [2] [5], but their inherently sequential computation" -->
+    <text x="40" y="58"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">modeling</text>
+    <!-- Three adjacent chips: 35, 2, 5 (matches actual app's grouped-citation rendering) -->
+    <use href="#ic" x="105" y="46"/>
+    <text x="114" y="59"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">35</text>
+    <use href="#ic" x="127" y="46"/>
+    <text x="136" y="59"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">2</text>
+    <use href="#ic" x="149" y="46"/>
+    <text x="158" y="59"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">5</text>
+    <text x="172" y="58"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">, but their inherently sequential computation</text>
+
+    <!-- Line 3: "precludes parallelization within training examples — a critical limit at" -->
+    <text x="40" y="82"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">precludes parallelization within training examples — a critical limit at long</text>
+
+    <!-- Line 4: "sequence lengths. Factorization tricks [21] and conditional computation [32]" -->
+    <text x="40" y="106"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">sequence lengths. Factorization tricks</text>
+    <use href="#ic" x="307" y="94"/>
+    <text x="316" y="107"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">21</text>
+    <text x="332" y="106"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">and conditional computation</text>
+    <use href="#ic" x="554" y="94"/>
+    <text x="563" y="107"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">32</text>
+    <text x="580" y="106"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">helped, but the</text>
+
+    <!-- Line 5: "fundamental sequential constraint remained. The Transformer eschews recurrence" -->
+    <text x="40" y="130"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">fundamental sequential constraint remained. The Transformer eschews recurrence and</text>
+
+    <!-- Line 6: "relies on attention [2] [19] to model global dependencies, yielding more parallel" -->
+    <text x="40" y="154"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">relies on attention</text>
+    <use href="#ic" x="178" y="142"/>
+    <text x="187" y="155"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">2</text>
+    <use href="#ic" x="200" y="142"/>
+    <text x="209" y="155"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="600"
+          fill="#14B8A6">19</text>
+    <text x="223" y="154"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">to model global dependencies — yielding more parallelization</text>
+
+    <!-- Line 7: "and reaching SOTA translation quality after just 12 h on 8 P100 GPUs." -->
+    <text x="40" y="178"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="14"
+          fill="#27272A">and reaching SOTA translation quality after just 12 h on 8×P100 GPUs.</text>
+
+    <!-- Sources footer (matches SourcesCitation.tsx: collapsible header + wrap row of chips) -->
+    <line x1="40" y1="210" x2="1056" y2="210" stroke="#E2E8F0" stroke-width="1"/>
+    <!-- Header row -->
+    <g transform="translate(40, 234)">
+      <!-- FileText-like icon (simplified) -->
+      <rect x="0" y="-10" width="11" height="14" rx="1.5" fill="none" stroke="#64748B" stroke-width="1.3"/>
+      <line x1="3" y1="-6" x2="8" y2="-6" stroke="#64748B" stroke-width="1.1"/>
+      <line x1="3" y1="-3" x2="8" y2="-3" stroke="#64748B" stroke-width="1.1"/>
+      <line x1="3" y1="0"  x2="6" y2="0"  stroke="#64748B" stroke-width="1.1"/>
+      <text x="20" y="2"
+            font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+            font-size="12"
+            fill="#64748B">5 sources</text>
+      <!-- ChevronUp -->
+      <polyline points="76,2 81,-3 86,2" fill="none" stroke="#64748B" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Source chips (wrap row). Each chip = one document.
+         Layout matches SourceChip styling: gray-100 bg, 6px radius, numbered icon + name. -->
+    <g transform="translate(40, 264)">
+      <!-- Chip 1: Hochreiter & Schmidhuber, 1997 -->
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="228" height="30" rx="6" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1"/>
+        <rect x="6" y="6" width="18" height="18" rx="4" fill="#14B8A6"/>
+        <text x="15" y="19" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">1</text>
+        <text x="32" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#475569">hochreiter_lstm_1997.pdf</text>
+      </g>
+      <!-- Chip 2: Cho et al., 2014 -->
+      <g transform="translate(238, 0)">
+        <rect x="0" y="0" width="180" height="30" rx="6" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1"/>
+        <rect x="6" y="6" width="18" height="18" rx="4" fill="#14B8A6"/>
+        <text x="15" y="19" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">2</text>
+        <text x="32" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#475569">cho_gru_2014.pdf</text>
+      </g>
+      <!-- Chip 3: Sutskever et al. (with passage badge — 2 chunks) -->
+      <g transform="translate(428, 0)">
+        <rect x="0" y="0" width="226" height="30" rx="6" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1"/>
+        <rect x="6" y="6" width="18" height="18" rx="4" fill="#14B8A6"/>
+        <text x="15" y="19" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">3</text>
+        <text x="32" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#475569">sutskever_seq2seq.pdf</text>
+        <!-- passage count badge -->
+        <rect x="194" y="6" width="22" height="18" rx="9" fill="#CCFBF1"/>
+        <text x="205" y="19" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#14B8A6">2</text>
+      </g>
+      <!-- Chip 4: Bahdanau et al., 2015 -->
+      <g transform="translate(664, 0)">
+        <rect x="0" y="0" width="206" height="30" rx="6" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1"/>
+        <rect x="6" y="6" width="18" height="18" rx="4" fill="#14B8A6"/>
+        <text x="15" y="19" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">4</text>
+        <text x="32" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#475569">bahdanau_attn_2015.pdf</text>
+      </g>
+      <!-- Chip 5: Kim et al., 2017 -->
+      <g transform="translate(880, 0)">
+        <rect x="0" y="0" width="176" height="30" rx="6" fill="#F1F5F9" stroke="#E2E8F0" stroke-width="1"/>
+        <rect x="6" y="6" width="18" height="18" rx="4" fill="#14B8A6"/>
+        <text x="15" y="19" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">5</text>
+        <text x="32" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12" fill="#475569">kim_structured.pdf</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Composer (gray box with "Send" button on the right) -->
+  <!-- Outside the assistant message group so it sits below the sources -->
+</svg>

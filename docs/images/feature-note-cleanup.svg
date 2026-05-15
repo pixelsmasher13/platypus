@@ -1,0 +1,142 @@
+<svg viewBox="0 0 1280 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Note cleanup — turn raw transcripts into structured notes">
+  <defs>
+    <linearGradient id="bg-nc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FAFAFA"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="purpleGlow-nc" cx="50%" cy="20%" r="55%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cardShadow-nc" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="560" fill="url(#bg-nc)"/>
+  <rect width="1280" height="560" fill="url(#purpleGlow-nc)"/>
+
+  <!-- Section label -->
+  <text x="80" y="70"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="14"
+        font-weight="600"
+        fill="#14B8A6"
+        letter-spacing="2">CLEAN-UP</text>
+  <text x="80" y="108"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="32"
+        font-weight="700"
+        fill="#18181B"
+        letter-spacing="-0.8">From raw transcript to structured notes</text>
+  <text x="80" y="138"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="15"
+        font-weight="400"
+        fill="#71717A">Headings, decisions, action items — extracted by the LLM you bring (Claude · OpenAI · Gemini · Ollama).</text>
+
+  <!-- LEFT: Raw transcript card -->
+  <g filter="url(#cardShadow-nc)">
+    <rect x="80" y="180" width="500" height="320" rx="14" ry="14" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1"/>
+  </g>
+  <line x1="80" y1="226" x2="580" y2="226" stroke="#F4F4F5" stroke-width="1"/>
+
+  <!-- Raw header -->
+  <g transform="translate(112, 207)">
+    <rect x="0" y="-12" width="74" height="20" rx="10" fill="#FEF2F2"/>
+    <text x="37" y="3"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="700"
+          fill="#B91C1C"
+          letter-spacing="0.5">RAW</text>
+    <text x="84" y="3"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="13"
+          font-weight="600"
+          fill="#27272A">transcript_2026-05-11.txt</text>
+  </g>
+
+  <!-- Raw transcript lines (light text, slightly messy) -->
+  <g transform="translate(112, 256)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" font-size="13" fill="#71717A">
+    <text y="0">Sarah: ...so basically, uh, the migration on the user table —</text>
+    <text y="18">we were going to do it last sprint but, you know, with</text>
+    <text y="36">the QA backlog it just didn't fit. I think we push it.</text>
+    <text y="64">Tom: Right. Push by two weeks then? Until the 22nd?</text>
+    <text y="92">Sarah: Yeah. And we should give the API contract change</text>
+    <text y="110">to mobile by Thursday so they're not blocked.</text>
+    <text y="138">Tom: Got it. Want me to send the spec or you want to?</text>
+    <text y="156">Sarah: I'll send it. Let's also make sure rate limits</text>
+    <text y="174">stay at 60/min — we touched on that last week.</text>
+    <text y="202">Tom: Sounds good. I'll book a follow-up Monday.</text>
+  </g>
+
+  <!-- Arrow with sparkle -->
+  <g transform="translate(620, 340)">
+    <!-- Long arrow shaft -->
+    <line x1="0" y1="0" x2="40" y2="0" stroke="#14B8A6" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Arrow head -->
+    <path d="M 36 -7 L 46 0 L 36 7" fill="none" stroke="#14B8A6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- "Polish" label -->
+    <text x="23" y="-18"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="700"
+          fill="#0F766E"
+          letter-spacing="0.5">POLISH</text>
+    <!-- Sparkle -->
+    <g transform="translate(23, 22)">
+      <path d="M 0 -6 L 1.5 -1.5 L 6 0 L 1.5 1.5 L 0 6 L -1.5 1.5 L -6 0 L -1.5 -1.5 Z" fill="#14B8A6"/>
+    </g>
+  </g>
+
+  <!-- RIGHT: Clean notes card -->
+  <g filter="url(#cardShadow-nc)">
+    <rect x="700" y="180" width="500" height="320" rx="14" ry="14" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1"/>
+  </g>
+  <line x1="700" y1="226" x2="1200" y2="226" stroke="#F4F4F5" stroke-width="1"/>
+
+  <!-- Clean header -->
+  <g transform="translate(732, 207)">
+    <rect x="0" y="-12" width="92" height="20" rx="10" fill="#F0FDFA"/>
+    <text x="46" y="3"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="700"
+          fill="#0F766E"
+          letter-spacing="0.5">STRUCTURED</text>
+    <text x="102" y="3"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="13"
+          font-weight="600"
+          fill="#27272A">Migration sync · 11 May 2026</text>
+  </g>
+
+  <!-- Clean notes content -->
+  <g transform="translate(732, 256)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif">
+    <!-- Heading: Decisions -->
+    <text y="0" font-size="14" font-weight="700" fill="#18181B">Decisions</text>
+    <circle cx="8" cy="20" r="2.5" fill="#14B8A6"/>
+    <text x="20" y="24" font-size="13" fill="#3F3F46">Push user-table migration <tspan font-weight="600">two weeks</tspan>, to <tspan font-weight="600">22 May</tspan>.</text>
+    <circle cx="8" cy="44" r="2.5" fill="#14B8A6"/>
+    <text x="20" y="48" font-size="13" fill="#3F3F46">Keep API rate limits at <tspan font-weight="600">60 req/min</tspan>.</text>
+
+    <!-- Heading: Action items -->
+    <text y="92" font-size="14" font-weight="700" fill="#18181B">Action items</text>
+    <!-- Checkbox 1 -->
+    <rect x="2" y="106" width="12" height="12" rx="3" fill="none" stroke="#A1A1AA" stroke-width="1.5"/>
+    <text x="22" y="116" font-size="13" fill="#3F3F46"><tspan font-weight="600">Sarah</tspan> — send API contract spec to mobile team <tspan fill="#71717A">(by Thu)</tspan></text>
+    <!-- Checkbox 2 -->
+    <rect x="2" y="128" width="12" height="12" rx="3" fill="none" stroke="#A1A1AA" stroke-width="1.5"/>
+    <text x="22" y="138" font-size="13" fill="#3F3F46"><tspan font-weight="600">Tom</tspan> — book follow-up sync for Monday morning</text>
+
+    <!-- Heading: Open questions -->
+    <text y="172" font-size="14" font-weight="700" fill="#18181B">Open questions</text>
+    <text x="2" y="194" font-size="13" fill="#A1A1AA">·</text>
+    <text x="20" y="194" font-size="13" fill="#3F3F46">Does QA need additional headcount for migration drills?</text>
+  </g>
+</svg>

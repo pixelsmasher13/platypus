@@ -1,0 +1,110 @@
+<svg viewBox="0 0 1280 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Live transcription — words appear on screen as they're spoken">
+  <defs>
+    <linearGradient id="bg-lt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FAFAFA"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="tealGlow-lt" cx="85%" cy="15%" r="55%">
+      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#14B8A6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="cardShadow-lt" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="560" fill="url(#bg-lt)"/>
+  <rect width="1280" height="560" fill="url(#tealGlow-lt)"/>
+
+  <!-- Section label -->
+  <text x="80" y="70"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="14"
+        font-weight="600"
+        fill="#14B8A6"
+        letter-spacing="2">LIVE TRANSCRIPTION</text>
+  <text x="80" y="108"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="32"
+        font-weight="700"
+        fill="#18181B"
+        letter-spacing="-0.8">Words appear as they're spoken</text>
+  <text x="80" y="138"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="15"
+        font-weight="400"
+        fill="#71717A">Whisper runs on your machine — no audio leaves the device.</text>
+
+  <!-- Main card -->
+  <g filter="url(#cardShadow-lt)">
+    <rect x="80" y="180" width="1120" height="320" rx="14" ry="14" fill="#FFFFFF" stroke="#E4E4E7" stroke-width="1"/>
+  </g>
+
+  <!-- Card header bar -->
+  <line x1="80" y1="232" x2="1200" y2="232" stroke="#F4F4F5" stroke-width="1"/>
+  <text x="112" y="211"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="13"
+        font-weight="600"
+        fill="#27272A">Voice note · Migration sync</text>
+  <text x="1170" y="211"
+        text-anchor="end"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+        font-size="12"
+        font-weight="500"
+        fill="#71717A">whisper · large-v3-turbo · on-device</text>
+
+  <!-- Recording pill (matches the in-app red.50/red.500 pill at Projects.tsx:1441) -->
+  <g transform="translate(112, 260)">
+    <!-- Outer rounded pill, full red.50 background -->
+    <rect x="0" y="0" width="240" height="40" rx="20" fill="#FEF2F2"/>
+    <!-- Pulsing red dot -->
+    <circle cx="20" cy="20" r="5" fill="#EF4444">
+      <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    <!-- Elapsed time, red.600 -->
+    <text x="36" y="25"
+          font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="13"
+          font-weight="500"
+          fill="#DC2626">00:08:42</text>
+    <!-- Stop button, red, far right of the pill -->
+    <rect x="184" y="8" width="48" height="24" rx="12" fill="#DC2626"/>
+    <text x="208" y="24"
+          text-anchor="middle"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="11"
+          font-weight="700"
+          fill="#FFFFFF">Stop</text>
+  </g>
+
+  <!-- Transcribing badge (right side) — appears alongside recording -->
+  <g transform="translate(996, 268)">
+    <rect x="0" y="0" width="174" height="24" rx="12" fill="#F0FDFA"/>
+    <circle cx="14" cy="12" r="3" fill="#14B8A6">
+      <animate attributeName="opacity" values="1;0.3;1" dur="0.9s" repeatCount="indefinite"/>
+    </circle>
+    <text x="26" y="16"
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
+          font-size="12"
+          font-weight="600"
+          fill="#0F766E">transcribing locally</text>
+  </g>
+
+  <!-- Live transcript box — matches in-app gray.50 / italic text style -->
+  <rect x="112" y="324" width="1056" height="148" rx="8" ry="8" fill="#F9FAFB" stroke="#F4F4F5" stroke-width="1"/>
+
+  <!-- Continuous italic transcript text (no speaker labels — Whisper is not diarized) -->
+  <g transform="translate(132, 348)" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" font-size="13" font-style="italic" fill="#52525B">
+    <text y="0">…so what I'd suggest is we push the launch back two weeks, that way QA has time to run the migration drills</text>
+    <text y="22">against real traffic before we cut over. Right — push by two weeks then, until the 22nd. Yeah, and we should</text>
+    <text y="44">give the API contract change to the mobile team by Thursday so they're not blocked on the new response shape.</text>
+    <text y="66">Got it, want me to send the spec or do you want to? I'll send it. Also let's make sure rate limits stay at sixty per</text>
+    <text y="88">minute — we touched on that last week and I want to confirm before we publish the change<tspan fill="#A1A1AA">log</tspan></text>
+    <!-- Blinking caret to suggest in-progress -->
+    <rect x="675" y="80" width="2" height="14" fill="#14B8A6">
+      <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>

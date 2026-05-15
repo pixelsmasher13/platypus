@@ -19,6 +19,20 @@ An open-source desktop app for taking notes, transcribing meetings, and chatting
 
 Data stays on disk in SQLite. In local transcription mode, audio never leaves your machine.
 
+## Features at a glance
+
+<p align="center">
+  <img src="docs/images/feature-live-transcription.svg" alt="Live transcription — words appear on screen as they're spoken; Whisper runs locally" width="100%"/>
+</p>
+
+<p align="center">
+  <img src="docs/images/feature-note-cleanup.svg" alt="Note cleanup — turn raw transcripts into structured decisions and action items" width="100%"/>
+</p>
+
+<p align="center">
+  <img src="docs/images/feature-chat-sources.svg" alt="Chat with your notes — answers cite the source passage so you can verify" width="100%"/>
+</p>
+
 ## How it compares
 
 |                              | Platypus    | Granola | NotebookLM | Otter.ai |

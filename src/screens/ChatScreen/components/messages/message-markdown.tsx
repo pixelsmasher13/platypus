@@ -34,8 +34,8 @@ const CitationChip = styled.button`
   margin: 0 2px;
   border-radius: 9px;
   border: none;
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--accent-color, #6366f1);
+  background: rgba(20, 184, 166, 0.15);
+  color: var(--accent-color, #14b8a6);
   font-size: 11px;
   font-weight: 600;
   font-family: inherit;
@@ -45,7 +45,7 @@ const CitationChip = styled.button`
   transition: background 0.15s ease;
 
   &:hover {
-    background: rgba(99, 102, 241, 0.3);
+    background: rgba(20, 184, 166, 0.3);
   }
 `;
 
