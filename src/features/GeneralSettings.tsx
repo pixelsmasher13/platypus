@@ -1,3 +1,5 @@
+import { EffortSelector } from "../screens/ChatScreen/components/EffortSelector";
+import { DEFAULT_MODELS } from "../models/models";
 import { useEffect, useState } from "react";
 import {
   Box,
@@ -353,15 +355,21 @@ export const GeneralSettings = () => {
                   onChange={onChangeModelName}
                   placeholder={
                     localSettings.apiChoice === "claude"
-                      ? "claude-sonnet-4-6"
+                      ? DEFAULT_MODELS.claude
                       : localSettings.apiChoice === "openai"
-                      ? "gpt-5.4"
-                      : "gemini-3-pro-preview"
+                      ? DEFAULT_MODELS.openai
+                      : DEFAULT_MODELS.gemini
                   }
                 />
               </Flex>
             </Flex>
           )}
+          <Box my={3}>
+            <EffortSelector model={
+              localSettings.apiChoice === "claude" ? localSettings.modelClaude.trim() || DEFAULT_MODELS.claude :
+              localSettings.apiChoice === "openai" ? localSettings.modelOpenai.trim() || DEFAULT_MODELS.openai : ""
+            } />
+          </Box>
           <Text fontSize="sm" color="gray.500">
             Select the API to use for natural language processing tasks. For local models, use Ollama (default: http://localhost:11434).
             {localSettings.apiChoice !== "local" && " Leave the model field empty to use the default."}

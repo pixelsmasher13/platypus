@@ -1,23 +1,22 @@
+use crate::engine::model_settings::saved_effort;
+use platypus_notes::models::{selected_model, DEFAULT_OPENAI_MODEL, QUICK_OPENAI_MODEL, send_openai, StreamLines};
 use crate::configuration::state::ServiceAccess;
 use crate::engine::similarity_search_engine::DEFAULT_RAG_TOP_K;
 use crate::engine::project_vector_engine::search_project_vectors_live;
 use crate::engine::rag_prompt::{build_grounded_context, grounded_system_prompt};
 use crate::repository::settings_repository::get_setting;
 use async_openai::{
-    config::OpenAIConfig,
     types::{
         ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
         ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
-        CreateChatCompletionRequestArgs,
+        CreateChatCompletionRequestArgs, CreateChatCompletionResponse, CreateChatCompletionStreamResponse,
     },
-    Client as OpenAIClient,
 };
 use futures::StreamExt;
 use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-const DEFAULT_MODEL: &str = "gpt-5.4";
 
 #[derive(Serialize, Deserialize)]
 pub struct Message {
@@ -38,10 +37,7 @@ pub async fn send_prompt_to_openai(
         app_handle.db(|db| get_setting(db, "api_key_open_ai").expect("Failed on api_key_open_ai"));
 
     let mut filtered_context = String::new();
-    let model_to_use = match model_id.as_deref() {
-        Some("gpt-5.4") => "gpt-5.4",
-        _ => "gpt-5.4",
-    };
+    let model_to_use = selected_model(model_id.as_deref(), DEFAULT_OPENAI_MODEL);
     let rag_top_k: usize = app_handle
         .db(|db| get_setting(db, "rag_top_k"))
         .map(|s| s.setting_value.parse().unwrap_or(DEFAULT_RAG_TOP_K))
@@ -140,35 +136,38 @@ pub async fn send_prompt_to_openai(
         .build()
         .map_err(|e| format!("Failed to build request: {}", e))?;
 
-    let response_client =
-        OpenAIClient::with_config(OpenAIConfig::new().with_api_key(&setting.setting_value));
-    let mut stream = response_client
-        .chat()
-        .create_stream(request)
-        .await
-        .map_err(|e| format!("Failed to create chat completion stream: {}", e))?;
-
+    let effort = saved_effort(&app_handle, model_to_use);
+    let mut payload = serde_json::to_value(request).map_err(|e| e.to_string())?;
+    payload["stream"] = serde_json::json!(true);
+    let mut stream = send_openai(&setting.setting_value, payload, effort.as_deref()).await?.bytes_stream();
+    let mut lines = StreamLines::default();
     let mut completion = String::new();
-
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(response) => {
-                if let Some(choice) = response.choices.first() {
-                    if let Some(content) = &choice.delta.content {
-                        completion.push_str(content);
-                    }
-                }
+    let mut finished = false;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Error while streaming response: {}", e))?;
+        for line in lines.push(&chunk)? {
+            let Some(data) = line.strip_prefix("data:").map(str::trim) else { continue; };
+            if data == "[DONE]" {
+                finished = true;
+                break;
             }
-            Err(e) => {
-                return Err(format!("Error while streaming response: {}", e));
+            if data.is_empty() { continue; }
+            let response: CreateChatCompletionStreamResponse = serde_json::from_str(data)
+                .map_err(|e| format!("Invalid OpenAI stream response: {}", e))?;
+            if let Some(content) = response.choices.first().and_then(|c| c.delta.content.as_ref()) {
+                completion.push_str(content);
+                app_handle.get_window("main").expect("Failed to get main window")
+                    .emit("llm_response", completion.clone())
+                    .map_err(|e| format!("Failed to emit response: {}", e))?;
             }
         }
-
-        app_handle
-            .get_window("main")
-            .expect("Failed to get main window")
-            .emit("llm_response", completion.clone())
-            .map_err(|e| format!("Failed to emit response: {}", e))?;
+        if finished { break; }
+    }
+    if !finished {
+        return Err("OpenAI response was interrupted. Please try again.".into());
+    }
+    if completion.trim().is_empty() {
+        return Err("OpenAI returned no text. Please try again.".into());
     }
 
     // Estimate token usage based on word count
@@ -195,22 +194,14 @@ pub async fn generate_conversation_name(
     let setting =
         app_handle.db(|db| get_setting(db, "api_key_open_ai").expect("Failed on api_key_open_ai"));
 
-    // Initialize the OpenAI client with the API key
-    let config = OpenAIConfig::new().with_api_key(&setting.setting_value);
-    let client = OpenAIClient::with_config(config);
-
     // Define the system prompt to guide the model
     let system_prompt = format!(
         "Name the conversation based on the user input. Use a total of 18 characters or less, without quotation marks. Use proper English, don't skip spaces between words. You only need to answer with the name. The following is the user input: \n\n{}\n\n.:",
         user_input
     );
 
-    // Create a chat completion request with the system message and user input.
-    // Note: GPT-5.x models reject `max_tokens` and require `max_completion_tokens`,
-    // which the async-openai 0.23 builder doesn't expose. Skipping the cap is fine —
-    // the system prompt already constrains output to ≤18 characters.
     let request = CreateChatCompletionRequestArgs::default()
-        .model(DEFAULT_MODEL)
+        .model(QUICK_OPENAI_MODEL)
         .messages(vec![
             // Use the correct message type for the system message
             ChatCompletionRequestSystemMessageArgs::default()
@@ -230,18 +221,13 @@ pub async fn generate_conversation_name(
         .build()
         .map_err(|e| format!("generate_conversation_name request_error: {}", e))?; // Handle request building error
 
-    // Send the request to OpenAI and await the response, converting any OpenAIError to a String
-    let response = client
-        .chat()
-        .create(request)
-        .await
-        .map_err(|e| format!("generate_conversation_name OpenAI API request failed: {}", e))?;
+    let response: CreateChatCompletionResponse = send_openai(
+        &setting.setting_value, serde_json::to_value(request).map_err(|e| e.to_string())?, None
+    ).await?.json().await.map_err(|e| format!("Invalid OpenAI response: {}", e))?;
 
     // Extract the first message content safely from the response
-    let generated_name = response.choices[0]
-        .message
-        .content
-        .as_ref() // Convert Option<String> to Option<&String>
+    let generated_name = response.choices.first()
+        .and_then(|choice| choice.message.content.as_ref()) // Convert Option<String> to Option<&String>
         .map(|s| s.trim().to_string()) // Trim and convert to String if Some
         .unwrap_or_else(|| "Unnamed Conversation".to_string()); // Provide fallback if None
 

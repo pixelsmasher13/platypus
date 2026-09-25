@@ -1,3 +1,4 @@
+import { parseEffortPreferences } from "../models/models";
 import {
   createContext,
   useContext,
@@ -66,6 +67,9 @@ export type Settings = {
 type SettingsContextType = {
   settings: Settings;
   update: Update;
+  modelEfforts: Record<string, string>;
+  setModelEffort: (model: string, effort: string) => Promise<void>;
+  isSavingEffort: boolean;
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -73,6 +77,8 @@ const SettingsContext = createContext<SettingsContextType | undefined>(
 );
 
 export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
+  const [modelEfforts, setModelEfforts] = useState<Record<string, string>>({});
+  const [isSavingEffort, setIsSavingEffort] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
 
   const getSettingOrEmpty = (
@@ -115,6 +121,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
     invoke("get_latest_settings").then(async (response) => {
       const parsed = settingDbItemsZod.safeParse(response);
       if (parsed.success) {
+        setModelEfforts(parseEffortPreferences(getSettingOrEmpty(parsed.data, "model_efforts")));
         const builtSettings = buildSettings(parsed.data);
         const autoStartEnabled = await isEnabled();
         setSettings({
@@ -140,8 +147,16 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
     return Promise.resolve();
   };
 
+  const setModelEffort = async (model: string, effort: string) => {
+    setIsSavingEffort(true);
+    try {
+      const saved = await invoke<Record<string, string>>("set_model_effort", { model, effort });
+      setModelEfforts(saved);
+    } finally { setIsSavingEffort(false); }
+  };
+
   return (
-    <SettingsContext.Provider value={{ settings, update }}>
+    <SettingsContext.Provider value={{ settings, update, modelEfforts, setModelEffort, isSavingEffort }}>
       {children}
     </SettingsContext.Provider>
   );

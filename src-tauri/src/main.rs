@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use crate::engine::model_settings::set_model_effort;
 use std::env;
 use std::sync::Arc;
 
@@ -66,6 +67,8 @@ lazy_static! {
     static ref HNSW: SyncSimilaritySearch = Arc::new(Mutex::new(None));
     static ref WHISPER_ENGINE: Arc<std::sync::Mutex<Option<crate::engine::whisper_engine::WhisperEngine>>> =
         Arc::new(std::sync::Mutex::new(None));
+    static ref LOCAL_TRANSCRIPTION_TASK: tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<String, String>>>> =
+        tokio::sync::Mutex::new(None);
     static ref ACCUMULATED_TRANSCRIPT: Arc<std::sync::Mutex<String>> =
         Arc::new(std::sync::Mutex::new(String::new()));
 }
@@ -138,6 +141,7 @@ async fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             update_settings,
+            set_model_effort,
             get_latest_settings,
             send_prompt_to_llm,
             send_prompt_to_openai,
@@ -163,6 +167,7 @@ async fn main() {
             prompt_for_accessibility_permissions,
             get_app_project_activity_text,
             update_project_activity_text,
+            append_project_activity_text,
             vectorize_document_chunks,
             add_project_blank_activity,
             update_project_activity_name,
@@ -183,6 +188,12 @@ async fn main() {
             generate_suggested_questions,
             search_documents_content,
             generate_slides_from_document,
+            engine::presentation_engine::generate_designed_presentation,
+            engine::presentation_engine::generate_saved_presentation,
+            engine::presentation_engine::list_saved_presentations,
+            engine::presentation_engine::update_saved_presentation,
+            engine::presentation_engine::read_saved_presentation_file,
+            engine::presentation_engine::open_saved_presentation,
             generate_podcast_from_document,
             list_elevenlabs_voices,
             check_whisper_model,
@@ -596,6 +607,25 @@ fn update_project_activity_content(
         .map_err(|e| e.to_string())
 }
 
+// Append a completed recording to its original note after navigation. The read
+// and write share the DB lock so newer persisted edits are never overwritten.
+#[tauri::command]
+fn append_project_activity_text(app_handle: AppHandle, activity_id: i64, text: String) -> Result<(), String> {
+    app_handle.db(|db| {
+        let existing: String = db.query_row(
+            "SELECT full_document_text FROM projects_activities WHERE id = ?1",
+            rusqlite::params![activity_id], |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        update_activity_text(db, activity_id, &(existing + &text)).map_err(|e| e.to_string())?;
+        if get_setting(db, "vectorization_enabled").map(|s| s.setting_value == "true").unwrap_or(false) {
+            let project_id = get_project_id_for_document(db, activity_id).map_err(|e| e.to_string())?;
+            let (_, plain_text) = get_activity_plain_text(db, activity_id).map_err(|e| e.to_string())?;
+            save_chunks_for_document(db, activity_id, project_id, &plain_text).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+}
+
 #[tauri::command]
 fn update_project_activity_text(
     app_handle: AppHandle,
@@ -797,18 +827,12 @@ fn prompt_for_accessibility_permissions() {
 // Audio recording commands — dual mode (file-based for OpenAI, buffer for local Whisper)
 #[tauri::command]
 async fn start_audio_recording(app_handle: AppHandle, use_local: bool) -> Result<String, String> {
+    let mut task = LOCAL_TRANSCRIPTION_TASK.lock().await;
+    if task.is_some() { return Err("Finish the previous recording first.".into()); }
     if use_local {
         crate::engine::audio_engine::start_recording_local().await?;
-        // Clear accumulated transcript
-        {
-            let mut t = ACCUMULATED_TRANSCRIPT.lock().unwrap();
-            t.clear();
-        }
-        // Spawn the realtime transcription loop
-        let handle = app_handle.clone();
-        tokio::spawn(async move {
-            realtime_transcription_loop(handle).await;
-        });
+        ACCUMULATED_TRANSCRIPT.lock().unwrap().clear();
+        *task = Some(tokio::spawn(realtime_transcription_loop(app_handle)));
         Ok("local".to_string())
     } else {
         crate::engine::audio_engine::start_recording().await
@@ -818,30 +842,20 @@ async fn start_audio_recording(app_handle: AppHandle, use_local: bool) -> Result
 #[tauri::command]
 async fn stop_audio_recording(app_handle: AppHandle, use_local: bool) -> Result<String, String> {
     if use_local {
-        crate::engine::audio_engine::stop_recording_local().await?;
-        // Give the realtime loop a moment to finish
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-        // Process any remaining samples
-        let remaining = crate::engine::audio_engine::drain_all_samples();
-        if !remaining.is_empty() {
-            if let Some(text) = process_and_transcribe_chunk(&remaining) {
-                let mut t = ACCUMULATED_TRANSCRIPT.lock().unwrap();
-                if !t.is_empty() {
-                    t.push(' ');
-                }
-                t.push_str(&text);
-            }
-        }
-        // Emit final transcript
-        let final_text = {
-            let t = ACCUMULATED_TRANSCRIPT.lock().unwrap();
-            t.clone()
+        // Hold the session lock until all inference finishes. A new recording
+        // cannot receive text from jobs belonging to an earlier session.
+        let mut task = LOCAL_TRANSCRIPTION_TASK.lock().await;
+        if task.is_none() { return Err("No local recording to finish.".into()); }
+        let capture_result = crate::engine::audio_engine::stop_recording_local().await;
+        let final_result = if let Some(handle) = task.take() {
+            handle.await.map_err(|e| format!("Transcription worker failed: {}", e))?
+        } else {
+            Err("No local recording to finish.".into())
         };
+        capture_result?;
+        let final_text = final_result?;
         if let Some(w) = app_handle.get_window("main") {
-            let _ = w.emit("transcript-update", serde_json::json!({
-                "text": final_text,
-                "is_final": true
-            }));
+            let _ = w.emit("transcript-update", serde_json::json!({ "text": final_text, "committed_text": final_text, "draft_text": "", "is_final": true }));
         }
         Ok(final_text)
     } else {
@@ -937,120 +951,73 @@ fn get_transcript() -> String {
     t.clone()
 }
 
-/// Process a chunk of raw audio: resample → transcribe with Whisper.
-/// No RMS gate — Whisper itself handles silence (returns empty), so we let
-/// every chunk through to avoid dropping quiet speech (soft speakers, laptop
-/// speaker playback, distant voices).
-fn process_and_transcribe_chunk(raw_samples: &[f32]) -> Option<String> {
-    use crate::engine::audio_processor::resample;
-
-    let device_rate = crate::engine::audio_engine::DEVICE_SAMPLE_RATE
-        .load(std::sync::atomic::Ordering::SeqCst);
-    if device_rate == 0 {
-        return None;
-    }
-
-    // Resample directly to 16kHz for Whisper. Whisper-large-v3-turbo is robust
-    // to noise on its own, and RNNoise was crushing speech amplitude.
-    let samples_16k = match resample(raw_samples, device_rate, 16000) {
-        Ok(s) => s,
-        Err(e) => {
-            log::warn!("Resample to 16kHz failed: {}", e);
-            return None;
-        }
-    };
-
-    // Transcribe
+/// Decode one complete utterance, without text post-processing or phrase removal.
+fn process_and_transcribe_chunk(raw_samples: &[f32], device_rate: u32, draft: bool) -> Result<String, String> {
+    let samples_16k = crate::engine::audio_processor::resample(raw_samples, device_rate, 16000)
+        .map_err(|e| format!("Audio resampling failed: {}", e))?;
     let guard = WHISPER_ENGINE.lock().unwrap();
-    if let Some(engine) = guard.as_ref() {
-        match engine.transcribe(&samples_16k) {
-            Ok(text) if !text.is_empty() => Some(text),
-            Ok(_) => None,
-            Err(e) => {
-                log::warn!("Whisper transcription error: {}", e);
-                None
-            }
-        }
+    let engine = guard.as_ref().ok_or_else(|| "Whisper engine not initialized".to_string())?;
+    let result = if draft {
+        engine.transcribe_preview(&samples_16k, || !crate::engine::audio_engine::IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst))
     } else {
-        log::warn!("Whisper engine not initialized");
-        None
-    }
+        engine.transcribe(&samples_16k)
+    };
+    result.map_err(|e| format!("Whisper transcription failed: {}", e))
 }
 
-/// Realtime transcription loop — polls the audio buffer every 50ms,
-/// accumulates ~2s chunks, transcribes, and emits events
-async fn realtime_transcription_loop(app_handle: AppHandle) {
-    use crate::engine::audio_engine::{IS_RECORDING, DEVICE_SAMPLE_RATE, take_new_samples};
+/// A single worker owns chunk boundaries, decode order, and the final flush.
+async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, String> {
+    use crate::engine::audio_engine::{LOCAL_CAPTURE_RUNNING, IS_RECORDING, DEVICE_SAMPLE_RATE, take_new_samples};
+    use std::sync::atomic::Ordering;
+    use platypus_notes::transcription_audio::{SpeechChunker, LiveTranscript};
 
-    let mut pending: Vec<f32> = Vec::new();
-    let mut silence_count: u32 = 0;
-
+    let device_rate = DEVICE_SAMPLE_RATE.load(Ordering::SeqCst);
+    let mut chunker = SpeechChunker::new(device_rate);
+    let mut transcript = LiveTranscript::default();
+    let mut last_preview = std::time::Instant::now();
     loop {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        if !IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst) {
-            break;
-        }
-
-        let new = take_new_samples();
-        if new.is_empty() {
-            continue;
-        }
-        pending.extend_from_slice(&new);
-
-        let device_rate = DEVICE_SAMPLE_RATE.load(std::sync::atomic::Ordering::SeqCst);
-        if device_rate == 0 {
-            continue;
-        }
-
-        let chunk_duration_samples = (device_rate as usize) * 3; // 3 seconds
-        let min_chunk_samples = (device_rate as usize) * 2;    // 2 seconds minimum
-
-        // Check if we have enough for a chunk, or if there's a silence gap
-        let rms: f32 = if new.len() > 0 {
-            (new.iter().map(|s| s * s).sum::<f32>() / new.len() as f32).sqrt()
-        } else {
-            0.0
-        };
-
-        if rms < 0.005 {
-            silence_count += 1;
-        } else {
-            silence_count = 0;
-        }
-
-        let should_process = pending.len() >= chunk_duration_samples
-            || (silence_count >= 10 && pending.len() >= min_chunk_samples);
-
-        if !should_process {
-            continue;
-        }
-
-        let chunk: Vec<f32> = pending.drain(..).collect();
-        silence_count = 0;
-
-        // Transcribe on a blocking thread to avoid blocking the async runtime
-        let app = app_handle.clone();
-        let transcript_arc = ACCUMULATED_TRANSCRIPT.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Some(text) = process_and_transcribe_chunk(&chunk) {
-                let mut t = transcript_arc.lock().unwrap();
-                if !t.is_empty() {
-                    t.push(' ');
+        // Capture sets this flag only after its final callback and stream drop.
+        let finished = !LOCAL_CAPTURE_RUNNING.load(Ordering::SeqCst);
+        let mut chunks = chunker.push(&take_new_samples());
+        if finished { chunks.extend(chunker.finish()); }
+        for chunk in chunks {
+            let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&chunk, device_rate, false)).await;
+            let text = match result {
+                Ok(Ok(text)) => text,
+                error => {
+                    IS_RECORDING.store(false, Ordering::SeqCst);
+                    return Err(format!("Transcription stopped: {:?}", error));
                 }
-                t.push_str(&text);
-                let current = t.clone();
-                drop(t);
-
-                if let Some(w) = app.get_window("main") {
-                    let _ = w.emit("transcript-update", serde_json::json!({
-                        "text": current,
-                        "is_final": false
-                    }));
+            };
+            transcript.commit(&text);
+            *ACCUMULATED_TRANSCRIPT.lock().unwrap() = transcript.committed().to_string();
+            if let Some(w) = app_handle.get_window("main") {
+                let _ = w.emit("transcript-update", transcript.update(false));
+            }
+        }
+        if finished { break; }
+        // Final chunks always take priority. Only one preview can be in flight;
+        // later previews replace the entire unfinished utterance, never append.
+        if IS_RECORDING.load(Ordering::SeqCst) && last_preview.elapsed() >= std::time::Duration::from_secs(2) {
+            if let Some(audio) = chunker.take_preview() {
+                let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&audio, device_rate, true)).await;
+                last_preview = std::time::Instant::now();
+                if IS_RECORDING.load(Ordering::SeqCst) {
+                    match result {
+                        Ok(Ok(text)) => {
+                            transcript.revise(text);
+                            if let Some(w) = app_handle.get_window("main") {
+                                let _ = w.emit("transcript-update", transcript.update(false));
+                            }
+                        }
+                        error => log::warn!("Live draft unavailable; final transcription will continue: {:?}", error),
+                    }
                 }
             }
-        });
+        }
     }
+    Ok(transcript.committed().to_string())
 }
 
 // Document import commands

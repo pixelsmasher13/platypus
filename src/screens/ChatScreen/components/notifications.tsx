@@ -24,6 +24,7 @@ const STATUS_STYLES: Record<
 };
 
 type NotifyOptions = {
+  id?: string;
   title: string;
   description?: ReactNode;
   status?: Status;
@@ -91,8 +92,8 @@ const PrettyToast: FC<NotifyOptions & { onClose: () => void }> = ({
                   _hover={{ bg: accent, opacity: 0.9 }}
                   borderRadius="md"
                   onClick={() => {
-                    action.onClick();
                     onClose();
+                    action.onClick();
                   }}
                   mt={1}
                 >
@@ -117,11 +118,13 @@ export function useNotify() {
   const toast = useToast();
   return (opts: NotifyOptions) => {
     const chakraOpts: UseToastOptions = {
+      id: opts.id,
       duration: opts.duration === undefined ? 4000 : opts.duration,
       isClosable: true,
       position: "bottom-right",
       render: ({ onClose }) => <PrettyToast {...opts} onClose={onClose} />,
     };
-    toast(chakraOpts);
+    if (opts.id && toast.isActive(opts.id)) toast.update(opts.id, chakraOpts);
+    else toast(chakraOpts);
   };
 }

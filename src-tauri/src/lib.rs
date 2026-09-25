@@ -1,4 +1,11 @@
 pub mod entity;
+pub mod slides;
+pub mod presentation;
+pub mod presentation_library;
+pub mod models;
+pub mod transcription_audio;
+#[path = "engine/audio_processor.rs"]
+pub mod audio_processor;
 
 use scraper::{Html, Selector};
 

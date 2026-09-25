@@ -1,3 +1,6 @@
+use crate::engine::model_settings::saved_effort;
+use platypus_notes::models::claude_request;
+use platypus_notes::models::{selected_model, DEFAULT_CLAUDE_MODEL, claude_thinking, claude_text, ClaudeContent};
 use futures::StreamExt;
 use log::{debug, error, info};
 use reqwest::{Client, Response};
@@ -19,6 +22,8 @@ struct ClaudeRequest {
     messages: Vec<Message>,
     system: Vec<SystemBlock>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -44,7 +49,7 @@ pub struct Message {
 
 #[derive(Deserialize)]
 struct ClaudeResponse {
-    content: Vec<Content>,
+    content: Vec<ClaudeContent>,
     usage: Usage,
 }
 
@@ -54,14 +59,8 @@ struct Usage {
     output_tokens: u32,
 }
 
-#[derive(Deserialize)]
-struct Content {
-    text: String,
-}
 
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTRHOPIC_MODEL: &str = "claude-haiku-4-5";
-const ANTRHOPIC_MAIN_MODEL: &str = "claude-opus-4-6";
 const ANTRHOPIC_MODEL_CHEAP: &str = "claude-haiku-4-5";
 
 #[tauri::command]
@@ -84,7 +83,7 @@ pub async fn send_prompt_to_llm(
 
     // Configure client with keep-alive and proper timeouts
     let client = Client::builder()
-        .timeout(Duration::from_secs(180))  // Increased timeout
+        .timeout(Duration::from_secs(600))  // Increased timeout
         .tcp_keepalive(Duration::from_secs(60))  // Keep connection alive for 60 seconds
         .pool_idle_timeout(Duration::from_secs(90))  // Allow connections to stay in pool
         .pool_max_idle_per_host(2)  // Keep up to 2 idle connections per host
@@ -92,13 +91,7 @@ pub async fn send_prompt_to_llm(
         .build()
         .map_err(|e| format!("Failed to create client: {}", e))?;
 
-    let model_to_use = match model_id.as_deref() {
-        Some("claude-opus-4-6") => "claude-opus-4-6",
-        Some("claude-sonnet-4-6") => "claude-sonnet-4-6",
-        Some("claude-sonnet-4-5") => "claude-sonnet-4-5",
-        Some("claude-haiku-4-5") => "claude-haiku-4-5",
-        _ => "claude-sonnet-4-6", // Default to Claude Sonnet 4.6
-    };
+    let model_to_use = selected_model(model_id.as_deref(), DEFAULT_CLAUDE_MODEL);
     let mut filtered_context = String::new();
     let window_titles: Vec<String> = Vec::new();
     if is_first_message {
@@ -192,7 +185,11 @@ pub async fn send_prompt_to_llm(
             }),
         }],
         stream: true,
+        thinking: claude_thinking(model_to_use),
     };
+
+    let effort = saved_effort(&app_handle, model_to_use);
+    let request_body = claude_request(serde_json::to_value(request_body).map_err(|e| e.to_string())?, effort.as_deref());
 
     let mut attempt = 0;
     let max_retries = 3;
@@ -251,11 +248,10 @@ async fn handle_success_response(
         let mut input_tokens = 0;
         let mut output_tokens = 0;
 
+        let mut lines = platypus_notes::models::StreamLines::default();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("Failed to read chunk: {}", e))?;
-            let text = String::from_utf8_lossy(&chunk);
-
-            for line in text.lines() {
+            for line in lines.push(&chunk)? {
                 if !line.starts_with("data: ") {
                     continue;
                 }
@@ -386,7 +382,7 @@ pub async fn name_conversation(
 
     // Use the same client configuration for consistency
     let client = Client::builder()
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_secs(600))
         .tcp_keepalive(Duration::from_secs(60))
         .pool_idle_timeout(Duration::from_secs(90))
         .pool_max_idle_per_host(2)
@@ -411,6 +407,7 @@ pub async fn name_conversation(
             cache_control: None,
         }],
         stream: false,
+        thinking: None,
     };
 
     let response = client
@@ -429,7 +426,7 @@ pub async fn name_conversation(
             .json()
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
-        let generated_name = response_body.content[0].text.trim().to_string();
+        let generated_name = claude_text(&response_body.content)?;
         Ok(generated_name)
     } else {
         let error_message = response

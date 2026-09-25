@@ -1,3 +1,4 @@
+import { getConfiguredModel } from "../../../models/models";
 import {
   type FC,
   type ChangeEvent,
@@ -49,21 +50,11 @@ export const ChatInput: FC<ChatInputProps> = ({
   onRemoveSelectedDocument,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { settings } = useGlobalSettings();
+  const { settings, isSavingEffort } = useGlobalSettings();
   
-  // Initialize with default model based on provider preference
-  const defaultModel = (() => {
-    switch (settings.api_choice) {
-      case "claude": return "claude-sonnet-4-6";
-      case "openai": return "gpt-5.4";
-      case "gemini": return "gemini-3-pro-preview";
-      case "local": return "llama3.3:70b";
-      default: return "claude-sonnet-4-6";
-    }
-  })();
-  
+  const defaultModel = getConfiguredModel(settings);
   const [currentModel, setCurrentModel] = useState(defaultModel);
-  const [currentProvider, setCurrentProvider] = useState<"claude" | "openai" | "gemini" | "local">(settings.api_choice);
+  useEffect(() => setCurrentModel(defaultModel), [defaultModel, settings.api_choice]);
 
   const handleInput = () => {
     if (textareaRef.current) {
@@ -79,6 +70,7 @@ export const ChatInput: FC<ChatInputProps> = ({
   }, [value]);
 
   const handleSubmit = () => {
+    if (isSavingEffort) return;
     if (textareaRef.current) {
       textareaRef.current.style.height = "40px"; // Reset the height to the initial value
     }
@@ -87,7 +79,7 @@ export const ChatInput: FC<ChatInputProps> = ({
 
   const handleModelChange = (modelId: string, provider: "claude" | "openai" | "gemini" | "local") => {
     setCurrentModel(modelId);
-    setCurrentProvider(provider);
+
   };
 
   return (
@@ -187,7 +179,7 @@ export const ChatInput: FC<ChatInputProps> = ({
             type="submit"
             isLoading={isLoading || isGenerating}
             loadingText="Sending"
-            isDisabled={isGenerating || !value}
+            isDisabled={isGenerating || isSavingEffort || !value}
           >
             Send
           </Button>

@@ -1,8 +1,10 @@
+use anyhow::{anyhow, Result};
+use log::info;
 use std::path::PathBuf;
 use std::sync::Once;
-use anyhow::{Result, anyhow};
-use log::info;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadParams,
+};
 
 struct WhisperModelInfo {
     filename: &'static str,
@@ -44,13 +46,12 @@ unsafe extern "C" fn noop_log_callback(
     _level: GgmlLogLevel,
     _text: *const std::os::raw::c_char,
     _user_data: *mut std::os::raw::c_void,
-) {}
+) {
+}
 
 fn suppress_whisper_logs() {
-    SUPPRESS_WHISPER_LOGS.call_once(|| {
-        unsafe {
-            whisper_rs::set_log_callback(Some(noop_log_callback), std::ptr::null_mut());
-        }
+    SUPPRESS_WHISPER_LOGS.call_once(|| unsafe {
+        whisper_rs::set_log_callback(Some(noop_log_callback), std::ptr::null_mut());
     });
 }
 
@@ -68,7 +69,11 @@ pub fn model_path(model_id: &str) -> PathBuf {
 
 pub fn is_model_downloaded(model_id: &str) -> bool {
     let path = model_path(model_id);
-    path.exists() && path.metadata().map(|m| m.len() > 1_000_000).unwrap_or(false)
+    path.exists()
+        && path
+            .metadata()
+            .map(|m| m.len() > 1_000_000)
+            .unwrap_or(false)
 }
 
 pub async fn download_model(app_handle: &tauri::AppHandle, model_id: &str) -> Result<()> {
@@ -84,15 +89,21 @@ pub async fn download_model(app_handle: &tauri::AppHandle, model_id: &str) -> Re
     info!("Downloading whisper model from {}", info.url);
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3600))       // 1h total
+        .timeout(std::time::Duration::from_secs(3600)) // 1h total
         .connect_timeout(std::time::Duration::from_secs(30)) // 30s to connect
         .build()
         .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
-    let resp = client.get(info.url).send().await
+    let resp = client
+        .get(info.url)
+        .send()
+        .await
         .map_err(|e| anyhow!("Failed to start model download: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(anyhow!("Model download failed with status {}", resp.status()));
+        return Err(anyhow!(
+            "Model download failed with status {}",
+            resp.status()
+        ));
     }
 
     let total_size = resp.content_length().unwrap_or(0);
@@ -116,9 +127,12 @@ pub async fn download_model(app_handle: &tauri::AppHandle, model_id: &str) -> Re
             if percent != last_percent {
                 last_percent = percent;
                 if let Some(w) = app_handle.get_window("main") {
-                    let _ = w.emit("model-download-progress", serde_json::json!({
-                        "percent": percent
-                    }));
+                    let _ = w.emit(
+                        "model-download-progress",
+                        serde_json::json!({
+                            "percent": percent
+                        }),
+                    );
                 }
             }
         }
@@ -139,7 +153,10 @@ impl WhisperEngine {
     pub fn load(model_id: &str) -> Result<Self> {
         let path = model_path(model_id);
         if !path.exists() {
-            return Err(anyhow!("Whisper model not found at {:?}. Download it first.", path));
+            return Err(anyhow!(
+                "Whisper model not found at {:?}. Download it first.",
+                path
+            ));
         }
 
         suppress_whisper_logs();
@@ -149,25 +166,69 @@ impl WhisperEngine {
         let ctx = WhisperContext::new_with_params(
             path.to_str().ok_or_else(|| anyhow!("Invalid model path"))?,
             params,
-        ).map_err(|e| anyhow!("Failed to load whisper model: {:?}", e))?;
+        )
+        .map_err(|e| anyhow!("Failed to load whisper model: {:?}", e))?;
 
         info!("Whisper model loaded successfully");
         Ok(Self { ctx })
     }
 
     pub fn transcribe(&self, samples_16k: &[f32]) -> Result<String> {
+        self.decode(samples_16k, false, None)
+    }
+
+    /// Fast, replaceable preview on the same model. Stop can interrupt this
+    /// optional work so final decoding doesn't wait behind an obsolete draft.
+    pub fn transcribe_preview(&self, samples_16k: &[f32], cancel: fn() -> bool) -> Result<String> {
+        self.decode(samples_16k, true, Some(cancel))
+    }
+
+    fn decode(
+        &self,
+        samples_16k: &[f32],
+        draft: bool,
+        cancel: Option<fn() -> bool>,
+    ) -> Result<String> {
         if samples_16k.is_empty() {
             return Ok(String::new());
         }
 
-        let mut state = self.ctx.create_state()
+        let mut state = self
+            .ctx
+            .create_state()
             .map_err(|e| anyhow!("Failed to create whisper state: {:?}", e))?;
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        let strategy = if draft {
+            SamplingStrategy::Greedy { best_of: 1 }
+        } else {
+            SamplingStrategy::BeamSearch {
+                beam_size: 5,
+                patience: -1.0,
+            }
+        };
+        let mut params = FullParams::new(strategy);
+        if let Some(cancel_fn) = cancel.as_ref() {
+            unsafe extern "C" fn abort_preview(data: *mut std::ffi::c_void) -> bool {
+                let callback = &*(data as *const fn() -> bool);
+                callback()
+            }
+            // The pinned whisper-rs safe wrapper double-boxes its callback but
+            // casts the pointer to the unboxed closure. Use the C API instead:
+            // cancel_fn stays alive and immutable until synchronous full returns.
+            unsafe {
+                params.set_abort_callback(Some(abort_preview));
+                params.set_abort_callback_user_data(cancel_fn as *const fn() -> bool as *mut std::ffi::c_void);
+            }
+        }
         params.set_language(Some("en"));
         params.set_translate(false);
-        params.set_single_segment(true);
-        params.set_no_timestamps(true);
+        params.set_single_segment(false);
+        params.set_no_timestamps(false);
+        params.set_no_context(true);
+        params.set_temperature(0.0);
+        params.set_temperature_inc(0.0);
+        params.set_no_speech_thold(0.6);
+        params.set_suppress_nst(true);
         params.set_print_special(false);
         params.set_print_progress(false);
         params.set_print_realtime(false);
@@ -175,7 +236,22 @@ impl WhisperEngine {
         params.set_suppress_blank(true);
         params.set_n_threads(4);
 
-        state.full(params, samples_16k)
+        // Use the already-installed Silero detector when available. This rejects
+        // non-speech before decoding instead of filtering legitimate phrases.
+        let vad_path = model_dir().join("ggml-silero-v5.1.2.bin");
+        if vad_path.is_file() {
+            let mut vad = WhisperVadParams::new();
+            vad.set_min_speech_duration(100);
+            vad.set_min_silence_duration(700);
+            vad.set_speech_pad(200);
+            vad.set_samples_overlap(0.0);
+            params.set_vad_model_path(vad_path.to_str());
+            params.set_vad_params(vad);
+            params.enable_vad(true);
+        }
+
+        state
+            .full(params, samples_16k)
             .map_err(|e| anyhow!("Whisper inference failed: {:?}", e))?;
 
         let mut text = String::new();

@@ -1,3 +1,5 @@
+import { transcriptHtml } from "../../screens/ChatScreen/meetingSources";
+import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
 import { type FC, useState, useMemo, useRef, useEffect } from "react";
 import styled from "styled-components";
 import { invoke } from "@tauri-apps/api/tauri";
@@ -18,7 +20,6 @@ import {
   InputGroup,
   InputLeftElement,
   Text as ChakraText,
-  Tag,
   AlertDialog,
   AlertDialogBody,
   AlertDialogFooter,
@@ -39,11 +40,8 @@ import {
 } from "@chakra-ui/react";
 import {
   Search,
-  File,
   Trash2,
-  Edit,
   X,
-  MoreHorizontal,
   FilePlus,
   FileUp,
   FolderPlus,
@@ -57,6 +55,7 @@ import { Text } from "@platypus-app/design";
 import { useProject } from "../../state";
 import { ProjectModal } from "@/components";
 import { type Project } from "../../data/project";
+import { NoteLibrary } from "./NoteLibrary";
 
 //
 // -- Styled Components --
@@ -118,91 +117,6 @@ const ScrollableMenuList = styled(MenuList)`
     background: var(--chakra-colors-gray-400);
   }
 `;
-
-const DocumentsContainer = styled(Box)`
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  border-radius: var(--chakra-radii-md);
-  will-change: scroll-position;
-
-  /* Custom scrollbar styling */
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 4px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--chakra-colors-gray-200);
-    border-radius: 4px;
-  }
-
-  &::-webkit-scrollbar-thumb:hover {
-    background: var(--chakra-colors-gray-300);
-  }
-`;
-
-const ProjectHeader = styled(Box)`
-  background-color: var(--chakra-colors-gray-50);
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--chakra-colors-gray-600);
-  border-bottom: 1px solid var(--chakra-colors-gray-200);
-`;
-
-const DocumentName = styled(ChakraText)`
-  font-size: 14px;
-  line-height: 1.4;
-  font-weight: 400;
-  color: var(--chakra-colors-gray-800);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-height: 40px; /* 2 lines * line height */
-  max-width: calc(100% - 60px); /* Added more space for the three dots menu */
-  padding-right: 4px; /* Extra padding to ensure separation */
-`;
-
-const ProjectTag = styled(Tag)`
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background-color: var(--chakra-colors-gray-100);
-  color: var(--chakra-colors-gray-600);
-  z-index: 1;
-`;
-
-const UnassignedTag = styled(Tag)`
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background-color: var(--chakra-colors-gray-100);
-  color: var(--chakra-colors-gray-500);
-  font-style: italic;
-  z-index: 1;
-`;
-
-const SearchContainer = styled(Box)`
-  margin-bottom: 10px;
-`;
-
-const truncateDocumentName = (name: string, maxLength: number = 30) => {
-  if (name.length <= maxLength) return name;
-  return `${name.substring(0, maxLength)}...`;
-};
 
 const UNASSIGNED_PROJECT_NAME = "Unassigned";
 
@@ -365,14 +279,6 @@ export const Projects: FC<{
 
 //
 // -- ProjectSelector Component --
-type ActivityDocument = {
-  id: number;
-  activity_id: number | null;
-  name: string;
-  projectId: number;
-  projectName: string;
-};
-
 const ProjectSelector: FC<{
   projects: Project[];
   allProjects: Project[];
@@ -406,10 +312,7 @@ const ProjectSelector: FC<{
   onDeleteActivity,
   onRefreshProjects,
 }) => {
-  const [editingActivityId, setEditingActivityId] = useState<number | null>(null);
-  const [editingName, setEditingName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [documentSearchTerm, setDocumentSearchTerm] = useState("");
   
   // Voice note recording states
   const [isRecording, setIsRecording] = useState(false);
@@ -418,7 +321,7 @@ const ProjectSelector: FC<{
   const [isPreparingRecording, setIsPreparingRecording] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [recordingFilePath, setRecordingFilePath] = useState<string | null>(null);
-  const [liveTranscript, setLiveTranscript] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState<LiveTranscriptUpdate | null>(null);
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
@@ -438,88 +341,6 @@ const ProjectSelector: FC<{
       p.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [projects, searchTerm]);
-
-  // Full-text search: debounce the term, then ask the backend which documents
-  // contain it, so the list surfaces content hits alongside name matches.
-  const [contentMatchIds, setContentMatchIds] = useState<Set<number>>(new Set());
-  useEffect(() => {
-    const term = documentSearchTerm.trim();
-    if (term.length < 2) {
-      setContentMatchIds(new Set());
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const ids = await invoke<number[]>("search_documents_content", {
-          searchTerm: term,
-        });
-        if (!cancelled) setContentMatchIds(new Set(ids));
-      } catch (error) {
-        console.error("Content search failed:", error);
-        if (!cancelled) setContentMatchIds(new Set());
-      }
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [documentSearchTerm]);
-
-  // Build filtered + sorted document list (no pagination — render all at once)
-  const sortedDocuments = useMemo(() => {
-    const allDocs: ActivityDocument[] = selectedProject
-      ? selectedProject.activities.map((_, index) => ({
-          id: selectedProject.activities[index],
-          activity_id: selectedProject.activity_ids[index],
-          name: selectedProject.activity_names[index]
-            || "Untitled Note",
-          projectId: selectedProject.id,
-          projectName: selectedProject.name,
-        }))
-      : allProjects.flatMap(project =>
-          project.activities.map((_, index) => ({
-            id: project.activities[index],
-            activity_id: project.activity_ids[index],
-            name: project.activity_names[index]
-              || "Untitled Note",
-            projectId: project.id,
-            projectName: project.name,
-          }))
-        );
-
-    const filtered = documentSearchTerm.trim()
-      ? allDocs.filter(doc =>
-          doc.name.toLowerCase().includes(documentSearchTerm.toLowerCase()) ||
-          doc.projectName.toLowerCase().includes(documentSearchTerm.toLowerCase()) ||
-          contentMatchIds.has(doc.id)
-        )
-      : allDocs;
-
-    return filtered.sort((a, b) => b.id - a.id);
-  }, [selectedProject, allProjects, documentSearchTerm, contentMatchIds]);
-
-  // Start renaming a document
-  const handleStartEdit = (activity: { id: number; name: string }) => {
-    setEditingActivityId(activity.id);
-    setEditingName(activity.name);
-  };
-
-  // Save document name change
-  const handleSaveEdit = () => {
-    if (editingActivityId && editingName.trim()) {
-      onUpdateActivityName(editingActivityId, editingName.trim());
-      setEditingActivityId(null);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSaveEdit();
-    } else if (e.key === 'Escape') {
-      setEditingActivityId(null);
-    }
-  };
 
   // Create a new document in selected or unassigned project
   const handleAddNewDocument = async () => {
@@ -696,7 +517,7 @@ const ProjectSelector: FC<{
       // Reset audio state
       setRecordingFilePath(null);
       setRecordingTime(0);
-      setLiveTranscript("");
+      setLiveTranscript(null);
 
       // Start recording via Tauri
       const result = await invoke<string>('start_audio_recording', { useLocal });
@@ -707,8 +528,8 @@ const ProjectSelector: FC<{
 
       // Listen for live transcript updates in local mode
       if (useLocal) {
-        const unlisten = await listen<{ text: string; is_final: boolean }>("transcript-update", (event) => {
-          setLiveTranscript(event.payload.text);
+        const unlisten = await listen<LiveTranscriptUpdate>("transcript-update", (event) => {
+          setLiveTranscript(event.payload);
         });
         transcriptUnlistenRef.current = unlisten;
       }
@@ -796,7 +617,7 @@ const ProjectSelector: FC<{
         });
         await invoke("update_project_activity_text", {
           activityId: newActivityId,
-          text: transcription,
+          text: transcriptHtml(transcription) + '<p></p>',
         });
 
         // Refresh state so sidebar shows the correct name
@@ -807,7 +628,7 @@ const ProjectSelector: FC<{
 
         setRecordingFilePath(null);
         setRecordingTime(0);
-        setLiveTranscript("");
+        setLiveTranscript(null);
 
         toast({
           title: "Transcription complete",
@@ -1123,17 +944,6 @@ const ProjectSelector: FC<{
     }
   };
 
-  // Select a document without forcing a project switch
-  const handleDocumentSelect = (document: ActivityDocument) => {
-    onSelectActivity(document.id);
-  };
-
-  // Delete a document
-  const handleDeleteDocument = (e: React.MouseEvent, document: ActivityDocument) => {
-    e.stopPropagation();
-    onDeleteActivity(document.id);
-  };
-
   return (
     <Flex direction="column" w="full" gap={4} overflow="hidden" h="full">
       <Flex gap={2} w="full" align="center">
@@ -1141,7 +951,7 @@ const ProjectSelector: FC<{
           <Flex position="relative" w="full">
             <StyledMenuButton w="full">
               <Text type="m" bold>
-                {selectedProject ? selectedProject.name : 'Select a Project'}
+                {selectedProject ? selectedProject.name : 'All projects'}
               </Text>
             </StyledMenuButton>
 
@@ -1288,152 +1098,16 @@ const ProjectSelector: FC<{
           </Flex>
         </Flex>
         
-        <SearchContainer mb={3}>
-          <InputGroup size="md">
-            <InputLeftElement pointerEvents="none">
-              <Search size={16} color="var(--chakra-colors-gray-400)" />
-            </InputLeftElement>
-            <Input
-              placeholder="Search notes & their content..."
-              value={documentSearchTerm}
-              onChange={(e) => setDocumentSearchTerm(e.target.value)}
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck="false"
-              borderRadius="full"
-              _focus={{
-                boxShadow: "0 0 0 1px var(--chakra-colors-teal-400)",
-                borderColor: "teal.400"
-              }}
-            />
-          </InputGroup>
-        </SearchContainer>
-
-        <DocumentsContainer 
+        <NoteLibrary
+          projects={allProjects}
+          selectedProject={selectedProject}
+          selectedNoteId={selectedActivityId}
+          onSelect={onSelectActivity}
+          onRename={onUpdateActivityName}
+          onDelete={onDeleteActivity}
+          onCreate={handleAddNewDocument}
           onPaste={handlePaste}
-          tabIndex={0}
-          _focus={{ outline: 'none' }}
-        >
-          <Box>
-            {sortedDocuments.length > 0 ? (
-              <>
-                {sortedDocuments.map((document) => (
-                  <Flex
-                    key={document.id}
-                    p={3}
-                    mb={1}
-                    borderRadius="md"
-                    align="center"
-                    justify="space-between"
-                    _hover={{ bg: 'gray.50' }}
-                    transition="all 0.2s"
-                    bg={selectedActivityId === document.id ? 'teal.50' : 'white'}
-                    borderLeft={selectedActivityId === document.id ? '3px solid' : '3px solid transparent'}
-                    borderLeftColor={selectedActivityId === document.id ? 'teal.400' : 'transparent'}
-                    onClick={() => editingActivityId !== document.id && handleDocumentSelect(document)}
-                    cursor="pointer"
-                    position="relative"
-                    minHeight="55px"
-                    role="group"
-                  >
-                    <Flex align="center" gap={3} flex={1}>
-                      <Box color="gray.500">
-                        <File size={16} />
-                      </Box>
-                      <Box flex={1}>
-                        {editingActivityId === document.id ? (
-                          <Input
-                            value={editingName}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingName(e.target.value)}
-                            onBlur={handleSaveEdit}
-                            onKeyDown={handleKeyDown}
-                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                            autoFocus
-                            size="sm"
-                            variant="unstyled"
-                          />
-                        ) : (
-                          <Box>
-                            <DocumentName>
-                              {truncateDocumentName(document.name)}
-                            </DocumentName>
-                            
-                            {/* Show project tag only if no project filter is applied */}
-                            {!selectedProject && (
-                              document.projectName === UNASSIGNED_PROJECT_NAME ? (
-                                <></>
-                              ) : (
-                                <ProjectTag size="sm" variant="subtle">
-                                  {document.projectName}
-                                </ProjectTag>
-                              )
-                            )}
-                          </Box>
-                        )}
-                      </Box>
-                    </Flex>
-                    
-                    {/* Three dots menu in the top-right corner */}
-                    {!editingActivityId && (
-                      <Menu placement="bottom-end" isLazy strategy="fixed">
-                        <MenuButton
-                          as={IconButton}
-                          aria-label="Document options"
-                          icon={<MoreHorizontal size={14} />}
-                          size="xs"
-                          variant="ghost"
-                          opacity="0"
-                          _groupHover={{ opacity: 1 }}
-                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                          position="absolute"
-                          top="2"
-                          right="2"
-                        />
-                        <MenuList minW="120px">
-                          <MenuItem
-                            icon={<Edit size={14} />}
-                            onClick={(e: React.MouseEvent) => {
-                              e.stopPropagation();
-                              handleStartEdit(document);
-                            }}
-                          >
-                            Rename
-                          </MenuItem>
-                          <MenuItem
-                            icon={<Trash2 size={14} />}
-                            onClick={(e: React.MouseEvent) => handleDeleteDocument(e, document)}
-                            color="red.500"
-                          >
-                            Delete
-                          </MenuItem>
-                        </MenuList>
-                      </Menu>
-                    )}
-                  </Flex>
-                ))}
-                
-              </>
-            ) : (
-              <Flex 
-                justify="center" 
-                align="center" 
-                p={8}
-                color="gray.500"
-                flexDirection="column"
-                gap={2}
-              >
-                <File size={24} />
-                <Text type="m">
-                  {documentSearchTerm
-                    ? "No matching notes found"
-                    : selectedProject
-                      ? "No notes yet - create one!"
-                      : "No notes yet - start writing!"}
-                </Text>
-              </Flex>
-            )}
-          </Box>
-        </DocumentsContainer>
+        />
       </Flex>
 
       {/* Pinned voice recording button at bottom */}
@@ -1482,12 +1156,8 @@ const ProjectSelector: FC<{
                 Stop
               </Button>
             </Flex>
-            {settings.use_local_transcription && liveTranscript && (
-              <Box mt={2} px={3} py={2} bg="gray.50" borderRadius="md" maxH="100px" overflowY="auto">
-                <ChakraText fontSize="xs" color="gray.600" fontStyle="italic">
-                  {liveTranscript}
-                </ChakraText>
-              </Box>
+            {settings.use_local_transcription && (
+              <LiveTranscriptPreview update={liveTranscript} />
             )}
           </Box>
         )}

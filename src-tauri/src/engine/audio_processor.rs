@@ -3,6 +3,7 @@ use log::info;
 
 /// Resample audio from source_rate to target_rate using rubato
 pub fn resample(samples: &[f32], source_rate: u32, target_rate: u32) -> Result<Vec<f32>> {
+    if source_rate == 0 || target_rate == 0 { return Err(anyhow!("Sample rates must be positive")); }
     if source_rate == target_rate {
         return Ok(samples.to_vec());
     }
@@ -22,7 +23,7 @@ pub fn resample(samples: &[f32], source_rate: u32, target_rate: u32) -> Result<V
         window: WindowFunction::BlackmanHarris2,
     };
 
-    let chunk_size = samples.len().min(1024);
+    let chunk_size = 1024;
     let mut resampler = SincFixedIn::<f32>::new(
         ratio,
         2.0,
@@ -31,39 +32,22 @@ pub fn resample(samples: &[f32], source_rate: u32, target_rate: u32) -> Result<V
         1,
     ).map_err(|e| anyhow!("Failed to create resampler: {}", e))?;
 
-    let mut output = Vec::with_capacity((samples.len() as f64 * ratio) as usize + 1024);
-
-    let mut offset = 0;
-    while offset + chunk_size <= samples.len() {
-        let chunk = &samples[offset..offset + chunk_size];
-        let waves_in = vec![chunk.to_vec()];
-        match resampler.process(&waves_in, None) {
-            Ok(waves_out) => {
-                if let Some(out) = waves_out.into_iter().next() {
-                    output.extend_from_slice(&out);
-                }
-            }
-            Err(e) => return Err(anyhow!("Resampling error: {}", e)),
-        }
-        offset += chunk_size;
+    let expected = (samples.len() as f64 * ratio).round() as usize;
+    let mut output = Vec::with_capacity(expected + 1024);
+    for chunk in samples.chunks(chunk_size) {
+        let waves = vec![chunk.to_vec()];
+        let resampled = resampler.process_partial(Some(&waves), None)
+            .map_err(|e| anyhow!("Resampling error: {}", e))?;
+        output.extend_from_slice(&resampled[0]);
     }
-
-    if offset < samples.len() {
-        let remaining = &samples[offset..];
-        let mut padded = remaining.to_vec();
-        padded.resize(chunk_size, 0.0);
-        let waves_in = vec![padded];
-        match resampler.process(&waves_in, None) {
-            Ok(waves_out) => {
-                if let Some(out) = waves_out.into_iter().next() {
-                    let expected = (remaining.len() as f64 * ratio) as usize;
-                    let take = expected.min(out.len());
-                    output.extend_from_slice(&out[..take]);
-                }
-            }
-            Err(e) => return Err(anyhow!("Resampling error on final chunk: {}", e)),
-        }
+    // SincFixedIn emits fewer samples until its lookahead is filled. Flush
+    // that tail so the final consonant is retained; its output is time-aligned.
+    while output.len() < expected {
+        let resampled = resampler.process_partial::<Vec<f32>>(None, None)
+            .map_err(|e| anyhow!("Resampling flush error: {}", e))?;
+        output.extend_from_slice(&resampled[0]);
     }
+    output.truncate(expected);
 
     info!("Resampled {} samples ({}Hz) -> {} samples ({}Hz)",
           samples.len(), source_rate, output.len(), target_rate);
@@ -112,4 +96,23 @@ pub fn apply_noise_suppression(samples_48k: &[f32]) -> Vec<f32> {
 
     info!("Noise suppression applied to {} samples", output.len());
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn resampling_preserves_duration_and_final_audio() {
+        for rate in [44100, 48000] {
+            for len in [137, 1024, 17003] {
+                let mut input = vec![0.0; len];
+                for i in len - 64..len { input[i] = (i as f32 * 0.07).sin() * 0.3; }
+                let output = resample(&input, rate, 16000).unwrap();
+                assert_eq!(output.len(), (len as f64 * 16000.0 / rate as f64).round() as usize);
+                let energy = output.iter().rev().take(30).map(|s| s * s).sum::<f32>();
+                assert!(energy > 0.001, "rate={rate} len={len} tail_energy={energy}");
+            }
+        }
+        assert!(resample(&[0.0], 0, 16000).is_err());
+    }
 }

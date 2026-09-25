@@ -17,9 +17,9 @@ pub static AUDIO_BUFFER: once_cell::sync::Lazy<Arc<std::sync::Mutex<Vec<f32>>>> 
 // Device sample rate detected at recording start
 pub static DEVICE_SAMPLE_RATE: AtomicU32 = AtomicU32::new(0);
 
-// How many samples the realtime loop has already consumed
-pub static PROCESSED_SAMPLE_COUNT: once_cell::sync::Lazy<Arc<std::sync::Mutex<usize>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(std::sync::Mutex::new(0)));
+pub static LOCAL_CAPTURE_RUNNING: AtomicBool = AtomicBool::new(false);
+static LOCAL_RECORDING_THREAD: std::sync::Mutex<Option<std::thread::JoinHandle<Result<(), String>>>> =
+    std::sync::Mutex::new(None);
 
 /// Record audio to a WAV file 
 pub fn record_audio(file_path: &str) -> Result<(), String> {
@@ -178,7 +178,7 @@ pub fn read_audio_file(file_path: &str) -> Result<Vec<u8>, String> {
 // ── In-memory buffer mode (for local Whisper transcription) ──
 
 /// Record audio into an in-memory f32 buffer instead of a WAV file
-fn record_audio_to_buffer() -> std::result::Result<(), String> {
+fn record_audio_to_buffer(ready: tokio::sync::oneshot::Sender<()>) -> std::result::Result<(), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
     let host = cpal::default_host();
@@ -239,6 +239,8 @@ fn record_audio_to_buffer() -> std::result::Result<(), String> {
 
     stream.play().map_err(|e| format!("Failed to play stream: {}", e))?;
 
+    let _ = ready.send(());
+
     while IS_RECORDING.load(Ordering::SeqCst) {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -249,62 +251,40 @@ fn record_audio_to_buffer() -> std::result::Result<(), String> {
 
 /// Start recording into the in-memory buffer
 pub async fn start_recording_local() -> std::result::Result<(), String> {
-    if IS_RECORDING.load(Ordering::SeqCst) {
+    if IS_RECORDING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         return Err("Already recording".to_string());
     }
-
-    // Clear previous buffer
-    {
-        let mut buf = AUDIO_BUFFER.lock().unwrap();
-        buf.clear();
-    }
-    {
-        let mut count = PROCESSED_SAMPLE_COUNT.lock().unwrap();
-        *count = 0;
-    }
-
-    IS_RECORDING.store(true, Ordering::SeqCst);
-
-    std::thread::spawn(move || {
-        if let Err(err) = record_audio_to_buffer() {
-            eprintln!("Error recording audio to buffer: {}", err);
-            IS_RECORDING.store(false, Ordering::SeqCst);
-        }
+    AUDIO_BUFFER.lock().unwrap().clear();
+    DEVICE_SAMPLE_RATE.store(0, Ordering::SeqCst);
+    LOCAL_CAPTURE_RUNNING.store(true, Ordering::SeqCst);
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let thread = std::thread::spawn(move || {
+        let result = record_audio_to_buffer(ready_tx);
+        if result.is_err() { IS_RECORDING.store(false, Ordering::SeqCst); }
+        LOCAL_CAPTURE_RUNNING.store(false, Ordering::SeqCst);
+        result
     });
-
+    *LOCAL_RECORDING_THREAD.lock().unwrap() = Some(thread);
+    if ready_rx.await.is_err() {
+        stop_recording_local().await?;
+        return Err("Microphone capture could not start.".into());
+    }
     Ok(())
 }
 
-/// Stop the in-memory buffer recording
+/// Stop capture and await the actual thread, including its last audio callback.
 pub async fn stop_recording_local() -> std::result::Result<(), String> {
-    if !IS_RECORDING.load(Ordering::SeqCst) {
-        return Err("Not recording".to_string());
-    }
     IS_RECORDING.store(false, Ordering::SeqCst);
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    let thread = LOCAL_RECORDING_THREAD.lock().unwrap().take();
+    if let Some(thread) = thread {
+        tokio::task::spawn_blocking(move || thread.join())
+            .await.map_err(|e| format!("Recording join failed: {}", e))?
+            .map_err(|_| "Recording thread failed".to_string())??;
+    }
     Ok(())
 }
 
-/// Get new (unprocessed) samples from the buffer for the realtime loop
+/// Transfer captured samples to the one transcription worker exactly once.
 pub fn take_new_samples() -> Vec<f32> {
-    let buf = AUDIO_BUFFER.lock().unwrap();
-    let mut count = PROCESSED_SAMPLE_COUNT.lock().unwrap();
-    let start = *count;
-    if start >= buf.len() {
-        return Vec::new();
-    }
-    let new_samples = buf[start..].to_vec();
-    *count = buf.len();
-    new_samples
-}
-
-/// Drain all remaining samples (called at stop for final processing)
-pub fn drain_all_samples() -> Vec<f32> {
-    let buf = AUDIO_BUFFER.lock().unwrap();
-    let count = PROCESSED_SAMPLE_COUNT.lock().unwrap();
-    let start = *count;
-    if start >= buf.len() {
-        return Vec::new();
-    }
-    buf[start..].to_vec()
+    std::mem::take(&mut *AUDIO_BUFFER.lock().unwrap())
 }

@@ -1,3 +1,4 @@
+import { getConfiguredModel } from "../../models/models";
 import { type FC, useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { type } from "@tauri-apps/api/os";
 import {
@@ -15,6 +16,7 @@ import { Text, NavButton } from "@platypus-app/design";
 import styled from "styled-components";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
+import { runChatTurn } from "./chatTurn";
 import type { StoredMessage, Chat, ChunkSource } from "./types";
 import { debounce } from "lodash";
 import { FileText, X, History, Folder, MessageCircle } from "lucide-react";
@@ -33,6 +35,7 @@ import {
   TipTapEditor,
 } from "./components";
 import { useGlobalSettings } from "../../Providers/SettingsProvider";
+import { usePresentations } from '../../Providers/PresentationsProvider';
 import { SidePanel } from "../../components/SidePanel";
 import { Projects } from "../../features";
 import { useProject } from "../../state";
@@ -111,6 +114,7 @@ interface SelectedActivity {
 }
 
 export const ChatScreen: FC = () => {
+  const presentations = usePresentations();
   const [userInput, setUserInput] = useState("");
   const toast = useToast();
   const [chats, setChats] = useState<Chat[]>([]);
@@ -118,11 +122,11 @@ export const ChatScreen: FC = () => {
   const [dialogue, setDialogue] = useState<StoredMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const sendingRef = useRef(false);
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const [isChatHistoryOpen, setIsChatHistoryOpen] = useState(false);
   const messageRef = useRef<HTMLDivElement | null>(null);
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
-  const [isFirstMessage, setIsFirstMessage] = useState(true);  // Default true for new conversations
   const [isLoadingExistingChat, setIsLoadingExistingChat] = useState(false);
   const [dailyOutputTokens, setDailyOutputTokens] = useState(0);
   const [dailyInputTokens, setDailyInputTokens] = useState(0);
@@ -207,18 +211,12 @@ export const ChatScreen: FC = () => {
       setDailyInputTokens((prev) => prev + event.payload);
     });
 
-    const unlisten3 = listen("llm_sources", (event: any) => {
-      const sources = event.payload as ChunkSource[];
-      setCurrentSources(sources);
-    });
-
     retrieveTokenData();
     resetDailyOutputTokens();
 
     return () => {
       unlisten1.then((f) => f());
       unlisten2.then((f) => f());
-      unlisten3.then((f) => f());
       unlistenInput.then((f) => f());
     };
   }, []);
@@ -253,12 +251,14 @@ export const ChatScreen: FC = () => {
   // Fetch activity text only when the selected activity ID changes
   // Removed state.projects from deps to prevent multiple fetches/spinners
   useEffect(() => {
+    let cancelled = false;
     if (state.selectedActivityId) {
       setSelectedActivityText("");  // Clear old text immediately so editor remounts fresh
       setSelectedActivityName("");  // Clear old name so it doesn't flash in the new document
       setIsLoadingActivityText(true);
       fetchSelectedActivityText()
         .then((text) => {
+          if (cancelled) return;
           setSelectedActivityText(text);
           
           // Use the existing getActivityName function with null check
@@ -269,12 +269,14 @@ export const ChatScreen: FC = () => {
           }
         })
         .finally(() => {
-          setIsLoadingActivityText(false);
+          if (!cancelled) setIsLoadingActivityText(false);
         });
     } else {
+      setIsLoadingActivityText(false);
       setSelectedActivityText("");
       setSelectedActivityName("");
     }
+    return () => { cancelled = true; };
   }, [state.selectedActivityId]);
   
   // Update activity name separately when projects change (without refetching text)
@@ -341,8 +343,6 @@ export const ChatScreen: FC = () => {
         sources: msg.sources ? JSON.parse(msg.sources) : undefined,
       }));
       setDialogue(messages);
-      setIsFirstMessage(messages.length === 0);
-      console.log("[ChatScreen] fetchMessages - loaded", messages.length, "messages, isFirstMessage set to:", messages.length === 0);
     } catch (error) {
       console.error("Error fetching messages:", error);
     } finally {
@@ -434,21 +434,11 @@ export const ChatScreen: FC = () => {
 //   };
 // }, []);
 
+  const configuredModel = getConfiguredModel(settings);
   useEffect(() => {
-    // Set default model based on provider preference
-    const defaultModel = (() => {
-      switch (settings.api_choice) {
-        case "claude": return "claude-sonnet-4-6";
-        case "openai": return "gpt-5.4";
-        case "gemini": return "gemini-3-pro-preview";
-        case "local": return "llama3.3:70b";
-        default: return "claude-sonnet-4-6";
-      }
-    })();
-    
-    setCurrentModelId(defaultModel);
-  }, [settings.api_choice]);
-  
+    setCurrentModelId(configuredModel);
+  }, [configuredModel, settings.api_choice]);
+
   useEffect(() => {
     if (selectedChatId) {
       setDialogue([]);
@@ -457,30 +447,9 @@ export const ChatScreen: FC = () => {
     } else {
       // No chat selected = new chat state
       setDialogue([]);
-      setIsFirstMessage(true);  // Ensure RAG triggers on first message
       selectActivity(null);
     }
   }, [selectedChatId]);
-
-  // Soft reset on project change: keep the chat ID + history, but force the
-  // next message to re-run RAG against the new project. Without this, the
-  // backend short-circuits retrieval after turn 1 (chat_engine.rs only fires
-  // RAG when is_first_message=true), which silently leaves the model with
-  // the previous project's chunks cached in the system prompt.
-  const previousProjectIdRef = useRef<number | undefined | null>(undefined);
-  useEffect(() => {
-    const currentProjectId = state.selectedProject ?? null;
-    // Skip the initial render — we don't want to trigger on mount.
-    if (previousProjectIdRef.current === undefined) {
-      previousProjectIdRef.current = currentProjectId;
-      return;
-    }
-    if (previousProjectIdRef.current !== currentProjectId) {
-      console.log("[ChatScreen] Project scope changed — next message will re-run RAG");
-      setIsFirstMessage(true);
-      previousProjectIdRef.current = currentProjectId;
-    }
-  }, [state.selectedProject]);
 
   // Fetch suggested questions for the selected project. Best-effort: any
   // failure (no API key, empty project, provider down) just leaves the chips
@@ -576,7 +545,7 @@ export const ChatScreen: FC = () => {
     }
   };
 
-  const sendPromptToLlm = async (chatId: number, isFirstMessage: boolean, modelId?: string, messageText?: string) => {
+  const sendPromptToLlm = async (chatId: number, modelId?: string, messageText?: string) => {
     const outgoingText = messageText ?? userInput;
     try {
       const currentDate = new Date();
@@ -655,18 +624,15 @@ export const ChatScreen: FC = () => {
       const selectedProject = getSelectedProject();
       const projectId = selectedProject?.id ?? null;
 
-      // Determine effective isFirstMessage based on vectorization setting
-      // Only skip vector search if indexing is disabled
-      const isLocalIndexingDisabled = !settings.vectorization_enabled;
-      const effectiveIsFirstMessage = isLocalIndexingDisabled ? false : isFirstMessage;
-
-      console.log("[ChatScreen] sendPromptToLlm - isFirstMessage:", isFirstMessage, "effectiveIsFirstMessage:", effectiveIsFirstMessage, "vectorization_enabled:", settings.vectorization_enabled, "dialogue.length:", dialogue.length);
+      // The legacy IPC flag enables retrieval. Retrieve on every question,
+      // including follow-ups and reopened chats, so citations remain grounded.
+      const retrieveSources = settings.vectorization_enabled;
 
       switch (provider) {
         case "openai":
           await invoke("send_prompt_to_openai", {
             conversationHistory: fullConversation,
-            isFirstMessage: effectiveIsFirstMessage,
+            isFirstMessage: retrieveSources,
             combinedActivityText,
             modelId,
             projectId
@@ -675,7 +641,7 @@ export const ChatScreen: FC = () => {
         case "gemini":
           await invoke("send_prompt_to_gemini", {
             conversationHistory: fullConversation,
-            isFirstMessage: effectiveIsFirstMessage,
+            isFirstMessage: retrieveSources,
             combinedActivityText,
             modelId,
             projectId
@@ -684,7 +650,7 @@ export const ChatScreen: FC = () => {
         case "local":
           await invoke("send_prompt_to_local", {
             conversationHistory: fullConversation,
-            isFirstMessage: effectiveIsFirstMessage,
+            isFirstMessage: retrieveSources,
             combinedActivityText,
             modelId,
             projectId
@@ -694,7 +660,7 @@ export const ChatScreen: FC = () => {
         default:
           await invoke("send_prompt_to_llm", {
             conversationHistory: fullConversation,
-            isFirstMessage: effectiveIsFirstMessage,
+            isFirstMessage: retrieveSources,
             combinedActivityText,
             modelId,
             projectId
@@ -738,15 +704,17 @@ export const ChatScreen: FC = () => {
           role: "assistant",
           content: displayMessage,
           created_at: new Date().toISOString(),
+          sources: [],
         },
       ]);
+      throw error;
     }
   };
 
   const handleSubmit = async (modelId?: string, textOverride?: string) => {
     const selectedModelId = modelId || currentModelId;
     const messageText = textOverride ?? userInput;
-    if (!messageText.trim()) return;
+    if (!messageText.trim() || sendingRef.current) return;
     
     // Check API keys based on provider
     const checkApiKeys = (): { valid: boolean; message?: string } => {
@@ -798,6 +766,7 @@ export const ChatScreen: FC = () => {
       setSelectedActivityText("");
     }
     
+    sendingRef.current = true;
     setIsLoading(true);
     setIsGenerating(true);
     setFirstTokenReceived(false);
@@ -822,52 +791,35 @@ export const ChatScreen: FC = () => {
       setUserInput("");
       setCurrentSources([]); // Clear sources for new message
 
-      let assistantMessage = "";
-
-      const unlisten = await listen("llm_response", (event: any) => {
-        assistantMessage = event.payload as string;
-
-        if (!firstTokenReceived) {
+      const assistantId = Date.now() + 1;
+      const response = await runChatTurn(
+        (event, callback) => listen(event, event => callback(event.payload)),
+        () => sendPromptToLlm(chatId, selectedModelId, messageText),
+        ({ content, sources }) => {
+          setCurrentSources(sources);
+          if (!content) return;
           setFirstTokenReceived(true);
-        }
-
-        setDialogue((prevDialogue) => {
-          const lastMessage = prevDialogue[prevDialogue.length - 1];
-          if (lastMessage && lastMessage.role === "assistant") {
-            return prevDialogue.map((message, index) =>
-              index === prevDialogue.length - 1
-                ? { ...message, content: assistantMessage }
-                : message
-            );
-          } else {
-            const newMessage = {
-              id: Date.now(),
-              chat_id: chatId,
-              role: "assistant" as const,
-              content: assistantMessage,
-              created_at: new Date().toISOString(),
-            };
-            return [...prevDialogue, newMessage];
-          }
-        });
-      });
-
-      await sendPromptToLlm(chatId, isFirstMessage, selectedModelId, messageText);
-      setIsFirstMessage(false);
-
-      unlisten();
-      setUserInput("");
-      setIsLoading(false);
-      setIsGenerating(false);
+          setDialogue(previous => {
+            const message = { id: assistantId, chat_id: chatId, role: "assistant" as const,
+              content, sources, created_at: new Date().toISOString() };
+            return previous.some(item => item.id === assistantId)
+              ? previous.map(item => item.id === assistantId ? message : item)
+              : [...previous, message];
+          });
+        },
+      );
       await invoke("create_message", {
         chatId,
         role: "assistant",
-        content: assistantMessage,
-        sources: currentSources.length > 0 ? JSON.stringify(currentSources) : null,
+        content: response.content,
+        sources: response.sources.length ? JSON.stringify(response.sources) : null,
       });
     } catch (error) {
-      console.error("ChatScreen: handleSubmit has failed");
-      return;
+      console.error("ChatScreen: handleSubmit has failed", error);
+    } finally {
+      sendingRef.current = false;
+      setIsLoading(false);
+      setIsGenerating(false);
     }
   };
 
@@ -886,7 +838,6 @@ export const ChatScreen: FC = () => {
       if (selectedChatId === chatId) {
         setSelectedChatId(undefined);
         setDialogue([]);
-        setIsFirstMessage(true);  // After delete, next message is first
       }
     } catch (error) {
       console.error("Error deleting chat:", error);
@@ -978,7 +929,6 @@ export const ChatScreen: FC = () => {
   const onClickNewChat = () => {
     setSelectedChatId(undefined);
     setDialogue([]);
-    setIsFirstMessage(true);  // New chat = first message triggers RAG
     setIsGenerating(false);
     setFirstTokenReceived(false);
     setSelectedActivityTexts([]);
@@ -989,7 +939,7 @@ export const ChatScreen: FC = () => {
   return (
     <ScreenContainer>
       <ChatHeader
-        profileMenu={<NavButton onClick={onSettingsOpen}>Settings</NavButton>}
+        profileMenu={<Flex align="center" gap={2}><NavButton onClick={presentations.openLibrary}>Presentations{presentations.runningCount ? ` (${presentations.runningCount})` : ''}</NavButton><NavButton onClick={onSettingsOpen}>Settings</NavButton></Flex>}
       />
       <SidePanel
         gridArea={"sidebar"}
