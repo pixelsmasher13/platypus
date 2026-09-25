@@ -54,50 +54,6 @@ pub fn resample(samples: &[f32], source_rate: u32, target_rate: u32) -> Result<V
     Ok(output)
 }
 
-/// Apply RNNoise noise suppression. Input must be at 48kHz.
-/// Currently unused — RNNoise was attenuating quiet speech and Whisper
-/// handles noise robustly on its own. Kept for potential future use.
-#[allow(dead_code)]
-pub fn apply_noise_suppression(samples_48k: &[f32]) -> Vec<f32> {
-    use nnnoiseless::DenoiseState;
-
-    let frame_size = DenoiseState::FRAME_SIZE;
-    let mut denoiser = Box::new(DenoiseState::new());
-    let mut output = Vec::with_capacity(samples_48k.len());
-    let mut offset = 0;
-
-    while offset + frame_size <= samples_48k.len() {
-        let frame: Vec<f32> = samples_48k[offset..offset + frame_size]
-            .iter()
-            .map(|&s| s * 32767.0)
-            .collect();
-
-        let mut denoised = vec![0.0f32; frame_size];
-        denoiser.process_frame(&mut denoised, &frame);
-
-        for s in &denoised {
-            output.push(s / 32767.0);
-        }
-        offset += frame_size;
-    }
-
-    if offset < samples_48k.len() {
-        let remaining = &samples_48k[offset..];
-        let mut frame = vec![0.0f32; frame_size];
-        for (i, &s) in remaining.iter().enumerate() {
-            frame[i] = s * 32767.0;
-        }
-        let mut denoised = vec![0.0f32; frame_size];
-        denoiser.process_frame(&mut denoised, &frame);
-        for s in &denoised[..remaining.len()] {
-            output.push(s / 32767.0);
-        }
-    }
-
-    info!("Noise suppression applied to {} samples", output.len());
-    output
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

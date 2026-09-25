@@ -1,3 +1,5 @@
+import { useRecordingOwner } from "../../../components/RecordingRecovery";
+import { RecordingSourcePicker, RecordingMeters, defaultRecordingSource, type RecordingSource } from "../../../components/RecordingControls";
 import { TranscriptExtension } from "./TranscriptExtension";
 import { MeetingSourcesModal } from "./MeetingSourcesModal";
 import { extractMeetingSources, transcriptNode, transcriptHtml, type MeetingSources } from "../meetingSources";
@@ -83,8 +85,12 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [podcastResult, setPodcastResult] = useState<PodcastResult | null>(null);
   const [isPodcastPlayerOpen, setIsPodcastPlayerOpen] = useState(false);
   const [isPodcastJobRunning, setIsPodcastJobRunning] = useState(false);
+  const [recordingSource, setRecordingSource] = useState<RecordingSource>(defaultRecordingSource);
+  const recordingIdRef = useRef<string | null>(null);
+  const recordingLocalRef = useRef(true);
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
+  useRecordingOwner(recordingIdRef.current, isRecording);
   const [isPreparingRecording, setIsPreparingRecording] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -96,6 +102,10 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const recordingStartTimeRef = useRef<number | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptUnlistenRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    transcriptUnlistenRef.current?.();
+  }, []);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -186,7 +196,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      TranscriptExtension,
+      TranscriptExtension.configure({ getNoteId: () => documentIdRef.current }),
       TextStyle,
       FontFamily,
       Placeholder.configure({
@@ -315,31 +325,33 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     recordingDocumentRef.current = documentId;
     setIsPreparingRecording(true);
 
-    // For local mode, ensure model is ready
-    if (useLocal) {
-      const modelReady = await invoke<boolean>('check_whisper_model');
-      if (!modelReady) {
-        setIsDownloadingModel(true);
-        setDownloadProgress(0);
-        const progressUnlisten = await listen<{ percent: number }>("model-download-progress", (event) => {
-          setDownloadProgress(event.payload.percent);
-        });
-        try {
-          await invoke('download_whisper_model');
-        } finally {
-          progressUnlisten();
-          setIsDownloadingModel(false);
-        }
-      }
-      await invoke('init_whisper_model');
-    }
-
-    setRecordingFilePath(null);
-    setRecordingTime(0);
-    setLiveTranscript(null);
-
     try {
-      const result = await invoke<string>('start_audio_recording', { useLocal });
+      // For local mode, ensure model is ready
+      if (useLocal) {
+        const modelReady = await invoke<boolean>('check_whisper_model');
+        if (!modelReady) {
+          setIsDownloadingModel(true);
+          setDownloadProgress(0);
+          const progressUnlisten = await listen<{ percent: number }>("model-download-progress", (event) => {
+            setDownloadProgress(event.payload.percent);
+          });
+          try {
+            await invoke('download_whisper_model');
+          } finally {
+            progressUnlisten();
+            setIsDownloadingModel(false);
+          }
+        }
+        await invoke('init_whisper_model');
+      }
+
+      setRecordingFilePath(null);
+      setRecordingTime(0);
+      setLiveTranscript(null);
+
+      const result = await invoke<string>('start_audio_recording', { useLocal, noteId: recordingDocumentRef.current, source: recordingSource });
+      recordingIdRef.current = result;
+      recordingLocalRef.current = useLocal;
       if (!useLocal) {
         setRecordingFilePath(result);
       }
@@ -363,12 +375,12 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     } catch (error) {
       console.error("Failed to start recording:", error);
       setIsPreparingRecording(false);
-      toast({ title: "Recording failed", status: "error", duration: 3000, isClosable: true, position: "bottom-right" });
+      toast({ title: "Recording failed", description: String(error), status: "error", duration: 3000, isClosable: true, position: "bottom-right" });
     }
   };
 
   const stopNoteRecording = async () => {
-    const useLocal = settings.use_local_transcription;
+    const useLocal = recordingLocalRef.current;
 
     setIsRecording(false);
     setIsProcessingRecording(true);
@@ -399,12 +411,12 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       if (editor && transcription.trim()) {
         if (recordingDocumentRef.current !== documentIdRef.current) {
           // Keep a recording on its source note if navigation occurred during capture.
-          await invoke('append_project_activity_text', { activityId: recordingDocumentRef.current, text: transcriptHtml(transcription) + '<p></p>' });
+          await invoke('append_project_activity_text', { activityId: recordingDocumentRef.current, text: transcriptHtml(transcription, recordingIdRef.current) + '<p></p>' });
           invoke('vectorize_document_chunks', { documentId: recordingDocumentRef.current }).catch(() => {});
           toast({ title: "Transcript saved to the recorded note", status: "success" });
           return;
         }
-        editor.commands.insertContentAt(editor.state.doc.content.size, [transcriptNode(transcription), { type: 'paragraph' }]);
+        editor.commands.insertContentAt(editor.state.doc.content.size, [transcriptNode(transcription, recordingIdRef.current), { type: 'paragraph' }]);
 
         // Trigger auto-save
         latestContentRef.current = editor.getHTML();
@@ -755,6 +767,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   isDisabled={isPreparingRecording || isProcessingRecording || isTranscribing || isCleaningUp || isSummarizing}
                 />
               </Tooltip>
+              <RecordingSourcePicker value={recordingSource} onChange={setRecordingSource} disabled={isRecording || isPreparingRecording || isProcessingRecording || isTranscribing} />
 
               {/* Clean up or organize note */}
               <Tooltip label={hasMeetingTranscript ? "Organize meeting notes" : "Clean up note"}>
@@ -952,7 +965,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
               '.ProseMirror section[data-transcript]': {
                 borderLeft: '3px solid', borderColor: 'teal.200', bg: 'gray.50',
                 p: 4, my: 4, maxH: '320px', overflowY: 'auto',
-                '&::before': { content: '"Transcript"', display: 'block', fontSize: 'xs', fontWeight: 600, color: 'gray.500', mb: 2 },
+
               },
               ".ProseMirror ul, .ProseMirror ol": {
                 paddingLeft: "1.5em",
@@ -997,7 +1010,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   <>
                     <Spinner size="xs" color="blue.500" />
                     <Text fontSize="xs" fontWeight="500" color="blue.600">
-                      Initializing microphone...
+                      Connecting audio sources…
                     </Text>
                   </>
                 )}
@@ -1025,7 +1038,8 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   </>
                 )}
               </Flex>
-              {settings.use_local_transcription && isRecording && (
+              {isRecording && <RecordingMeters recordingId={recordingIdRef.current} source={recordingSource} />}
+              {recordingLocalRef.current && isRecording && (
                 <LiveTranscriptPreview update={liveTranscript} />
               )}
             </Box>

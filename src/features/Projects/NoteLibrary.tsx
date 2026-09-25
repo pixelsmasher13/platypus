@@ -137,9 +137,12 @@ export function NoteLibrary({ projects, selectedProject, selectedNoteId, onSelec
       {searchFailed && <Text fontSize="xs" color="orange.700">Content search is unavailable. Showing title and project matches.</Text>}
       <Box ref={listRef} flex={1} minH={0} overflowY="auto" onPaste={onPaste} aria-label="Notes" role="region">
         {results.map((note, index) => (
-          <Flex key={note.id} role="group" align="start" gap={1} mb={1} borderRadius="lg" border="1px solid"
-            borderColor={selectedNoteId === note.id ? 'teal.200' : 'transparent'}
-            bg={selectedNoteId === note.id ? 'teal.50' : 'transparent'} _hover={{ bg: selectedNoteId === note.id ? 'teal.50' : 'gray.50' }}>
+          <Flex key={note.id} role="group" align="start" gap={1} mb={1} borderRadius="lg" border="1px solid transparent"
+            position="relative" bg="transparent" _hover={{ bg: 'gray.50' }}
+            _before={selectedNoteId === note.id ? {
+              content: '""', position: 'absolute', left: 0, top: '12px',
+              width: '2px', height: '22px', borderRadius: 'full', bg: '#91B5AE', pointerEvents: 'none',
+            } : undefined}>
             {editingId === note.id ? (
               <Input aria-label="Note title" m={2} size="sm" autoFocus value={name} isReadOnly={saving}
                 onPaste={event => event.stopPropagation()}
@@ -161,7 +164,7 @@ export function NoteLibrary({ projects, selectedProject, selectedNoteId, onSelec
                 }}>
                 <Box mt="3px" flexShrink={0} color="gray.400"><File size={15} /></Box>
                 <Box minW={0}>
-                  <Text fontSize="sm" lineHeight="1.5" noOfLines={2} title={note.name} overflowWrap="anywhere">{note.name}</Text>
+                  <Text fontSize="sm" fontWeight={selectedNoteId === note.id ? 'medium' : 'normal'} lineHeight="1.5" noOfLines={2} title={note.name} overflowWrap="anywhere">{note.name}</Text>
                   {!selectedProject && <Text fontSize="xs" color="gray.500" mt={1} noOfLines={1}>{note.projectName}</Text>}
                   {term && matches.has(note.id) && !note.name.toLocaleLowerCase().includes(term.toLocaleLowerCase()) &&
                     <Text fontSize="xs" color="teal.600" mt={1}>Match in content</Text>}

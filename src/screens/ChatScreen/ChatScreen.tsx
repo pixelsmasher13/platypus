@@ -172,7 +172,7 @@ export const ChatScreen: FC = () => {
   } = useDisclosure();
   
   const [activeSettingsCategory, setActiveSettingsCategory] = useState("general");
-  const { settings } = useGlobalSettings();
+  const { settings, chatGpt } = useGlobalSettings();
 
   const debouncedScroll = useMemo(
     () =>
@@ -727,10 +727,10 @@ export const ChatScreen: FC = () => {
       }
 
       // Check provider-specific keys
-      if (settings.api_choice === "openai" && !settings.api_key_open_ai) {
+      if (settings.api_choice === "openai" && !settings.api_key_open_ai && !chatGpt.signed_in) {
         return {
           valid: false,
-          message: "OpenAI API key not provided. Provide it in Settings > General."
+          message: "Add an OpenAI API key or sign in with ChatGPT in Settings > General."
         };
       }
       if (settings.api_choice === "claude" && !settings.api_key_claude) {

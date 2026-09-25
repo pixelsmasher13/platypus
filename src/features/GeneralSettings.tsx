@@ -1,6 +1,8 @@
+import { RecordingsButton } from "../components/RecordingsButton";
 import { EffortSelector } from "../screens/ChatScreen/components/EffortSelector";
 import { DEFAULT_MODELS } from "../models/models";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api";
 import {
   Box,
   Flex,
@@ -12,7 +14,7 @@ import {
   Button,
   useToast,
 } from "@chakra-ui/react";
-import { useGlobalSettings } from "../Providers/SettingsProvider";
+import { useGlobalSettings, type ChatGptStatus } from "../Providers/SettingsProvider";
 
 type LocalSettings = {
   autoStart: boolean;
@@ -28,12 +30,15 @@ type LocalSettings = {
   modelOpenai: string;
   modelGemini: string;
   useLocalTranscription: boolean;
+  keepRecordings: boolean;
   whisperModel: string;
   apiKeyElevenlabs: string;
 };
 export const GeneralSettings = () => {
   const toast = useToast();
-  const { settings, update } = useGlobalSettings();
+  const { settings, update, chatGpt, setChatGpt } = useGlobalSettings();
+  const [chatGptBusy, setChatGptBusy] = useState<"signing-in" | "signing-out" | null>(null);
+  const chatGptCancelled = useRef(false);
   const [localSettings, setLocalSettings] = useState<LocalSettings>({
     autoStart: settings.auto_start,
     apiChoice: settings.api_choice,
@@ -48,6 +53,7 @@ export const GeneralSettings = () => {
     modelOpenai: settings.model_openai,
     modelGemini: settings.model_gemini,
     useLocalTranscription: settings.use_local_transcription,
+      keepRecordings: settings.keep_recordings,
     whisperModel: settings.whisper_model,
     apiKeyElevenlabs: settings.api_key_elevenlabs,
   });
@@ -67,6 +73,7 @@ export const GeneralSettings = () => {
       modelOpenai: settings.model_openai,
       modelGemini: settings.model_gemini,
       useLocalTranscription: settings.use_local_transcription,
+      keepRecordings: settings.keep_recordings,
       whisperModel: settings.whisper_model,
       apiKeyElevenlabs: settings.api_key_elevenlabs,
     });
@@ -79,6 +86,37 @@ export const GeneralSettings = () => {
       duration: 2000,
       isClosable: true,
     });
+  };
+
+  const signInWithChatGpt = async () => {
+    chatGptCancelled.current = false;
+    setChatGptBusy("signing-in");
+    try {
+      setChatGpt(await invoke<ChatGptStatus>("chatgpt_sign_in"));
+      toast({ title: "Signed in with ChatGPT", status: "success", duration: 3000, isClosable: true });
+    } catch (error) {
+      if (!chatGptCancelled.current) {
+        toast({ title: "ChatGPT sign-in failed", description: String(error), status: "error", duration: 9000, isClosable: true });
+      }
+    } finally {
+      setChatGptBusy(null);
+    }
+  };
+
+  const cancelChatGptSignIn = () => {
+    chatGptCancelled.current = true;
+    invoke("chatgpt_cancel_sign_in").catch(console.error);
+  };
+
+  const signOutOfChatGpt = async () => {
+    setChatGptBusy("signing-out");
+    try {
+      setChatGpt(await invoke<ChatGptStatus>("chatgpt_sign_out"));
+    } catch (error) {
+      toast({ title: "Couldn't sign out of ChatGPT", description: String(error), status: "error", duration: 9000, isClosable: true });
+    } finally {
+      setChatGptBusy(null);
+    }
   };
 
   const handleAutoStartChange = async (
@@ -135,26 +173,31 @@ export const GeneralSettings = () => {
     }
   };
 
-  const onSave = () => {
-    update({
-      ...settings,
-      auto_start: localSettings.autoStart,
-      api_choice: localSettings.apiChoice,
-      api_key_open_ai: localSettings.apiKeyOpenAi,
-      api_key_claude: localSettings.apiKeyClaude,
-      api_key_gemini: localSettings.apiKeyGemini,
-      local_model_url: localSettings.localModelUrl,
-      vectorization_enabled: localSettings.vectorizationEnabled,
-      rag_top_k: localSettings.ragTopK,
-      meeting_detection_enabled: localSettings.meetingDetectionEnabled,
-      model_claude: localSettings.modelClaude,
-      model_openai: localSettings.modelOpenai,
-      model_gemini: localSettings.modelGemini,
-      use_local_transcription: localSettings.useLocalTranscription,
-      whisper_model: localSettings.whisperModel,
-      api_key_elevenlabs: localSettings.apiKeyElevenlabs,
-    });
-    savedSuccessfullyToast();
+  const onSave = async () => {
+    try {
+      await update({
+        ...settings,
+        auto_start: localSettings.autoStart,
+        api_choice: localSettings.apiChoice,
+        api_key_open_ai: localSettings.apiKeyOpenAi,
+        api_key_claude: localSettings.apiKeyClaude,
+        api_key_gemini: localSettings.apiKeyGemini,
+        local_model_url: localSettings.localModelUrl,
+        vectorization_enabled: localSettings.vectorizationEnabled,
+        rag_top_k: localSettings.ragTopK,
+        meeting_detection_enabled: localSettings.meetingDetectionEnabled,
+        model_claude: localSettings.modelClaude,
+        model_openai: localSettings.modelOpenai,
+        model_gemini: localSettings.modelGemini,
+        use_local_transcription: localSettings.useLocalTranscription,
+        keep_recordings: localSettings.keepRecordings,
+        whisper_model: localSettings.whisperModel,
+        api_key_elevenlabs: localSettings.apiKeyElevenlabs,
+      });
+      savedSuccessfullyToast();
+    } catch (error) {
+      toast({ title: 'Could not save settings', description: String(error), status: 'error', isClosable: true });
+    }
   };
 
   const onChangeRagTopK = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,6 +288,15 @@ export const GeneralSettings = () => {
         </Box>
 
         <Box>
+          <Flex alignItems="center" mb={2} gap={4}>
+            <Text as="label" htmlFor="keep-recordings">Keep recordings</Text>
+            <Switch id="keep-recordings" isChecked={localSettings.keepRecordings} onChange={e => setLocalSettings(prev => ({ ...prev, keepRecordings: e.target.checked }))} />
+          </Flex>
+          <Text fontSize="sm" color="gray.500" mb={2}>Keep audio for playback and retranscription. When off, new audio is removed after successful transcription. Existing recordings and audio that needs recovery are kept.</Text>
+          <RecordingsButton />
+        </Box>
+
+        <Box>
           <Flex alignItems="center" mb={2}>
             <Flex flex={1}>
               <Text fontSize="md" mr={4}>
@@ -278,6 +330,42 @@ export const GeneralSettings = () => {
               />
             </Flex>
           </Flex>
+          <Flex alignItems="center" mb={2}>
+            <Flex flex={1}>
+              <Text fontSize="md" mr={4}>
+                ChatGPT Subscription:
+              </Text>
+            </Flex>
+            <Flex flex={2} alignItems="center" gap={3}>
+              {chatGpt.signed_in ? (
+                <>
+                  <Text fontSize="sm" flex={1} noOfLines={1}>
+                    Signed in{chatGpt.email ? ` as ${chatGpt.email}` : ""}
+                  </Text>
+                  <Button size="sm" variant="outline" onClick={signOutOfChatGpt} isLoading={chatGptBusy === "signing-out"}>
+                    Sign out
+                  </Button>
+                </>
+              ) : chatGptBusy === "signing-in" ? (
+                <>
+                  <Text fontSize="sm" flex={1} color="gray.600">
+                    Finish signing in with your browser…
+                  </Text>
+                  <Button size="sm" variant="ghost" onClick={cancelChatGptSignIn}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" colorScheme="teal" variant="outline" onClick={signInWithChatGpt}>
+                  Sign in with ChatGPT
+                </Button>
+              )}
+            </Flex>
+          </Flex>
+          <Text fontSize="sm" color="gray.500" mb={3}>
+            While signed in, OpenAI models use your ChatGPT plan for chat and note features instead of your API key.
+            Document indexing, cloud transcription, and designed PowerPoints still need an API key.
+          </Text>
           <Flex alignItems="center" mb={2}>
             <Flex flex={1}>
               <Text fontSize="md" mr={4}>

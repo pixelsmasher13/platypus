@@ -1,3 +1,5 @@
+import { RecordingRecovery, useRecordingOwner } from "../../components/RecordingRecovery";
+import { RecordingSourcePicker, RecordingMeters, defaultRecordingSource, type RecordingSource } from "../../components/RecordingControls";
 import { transcriptHtml } from "../../screens/ChatScreen/meetingSources";
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
 import { type FC, useState, useMemo, useRef, useEffect } from "react";
@@ -315,9 +317,13 @@ const ProjectSelector: FC<{
   const [searchTerm, setSearchTerm] = useState("");
   
   // Voice note recording states
+  const [recordingSource, setRecordingSource] = useState<RecordingSource>(defaultRecordingSource);
+  const recordingIdRef = useRef<string | null>(null);
+  const recordingLocalRef = useRef(true);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  useRecordingOwner(recordingIdRef.current, isRecording);
   const [isPreparingRecording, setIsPreparingRecording] = useState(false);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
   const [recordingFilePath, setRecordingFilePath] = useState<string | null>(null);
@@ -330,6 +336,10 @@ const ProjectSelector: FC<{
   const recordingStartTime = useRef<number | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptUnlistenRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    transcriptUnlistenRef.current?.();
+  }, []);
   
   const toast = useToast();
   const { settings } = useGlobalSettings();
@@ -520,7 +530,9 @@ const ProjectSelector: FC<{
       setLiveTranscript(null);
 
       // Start recording via Tauri
-      const result = await invoke<string>('start_audio_recording', { useLocal });
+      const result = await invoke<string>('start_audio_recording', { useLocal, source: recordingSource });
+      recordingIdRef.current = result;
+      recordingLocalRef.current = useLocal;
       if (!useLocal) {
         setRecordingFilePath(result);
       }
@@ -550,7 +562,7 @@ const ProjectSelector: FC<{
       setIsPreparingRecording(false);
       toast({
         title: "Recording failed",
-        description: "Could not start voice recording. Please try again.",
+        description: String(error),
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -560,7 +572,7 @@ const ProjectSelector: FC<{
 
   // Stop voice recording and auto-transcribe
   const stopRecording = async () => {
-    const useLocal = settings.use_local_transcription;
+    const useLocal = recordingLocalRef.current;
 
     try {
       setIsProcessingRecording(true);
@@ -607,6 +619,7 @@ const ProjectSelector: FC<{
       }
 
       if (newActivityId) {
+        if (recordingIdRef.current) await invoke('attach_recording', { id: recordingIdRef.current, noteId: newActivityId });
         const date = new Date();
         const documentName = `Voice Note ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 
@@ -617,7 +630,7 @@ const ProjectSelector: FC<{
         });
         await invoke("update_project_activity_text", {
           activityId: newActivityId,
-          text: transcriptHtml(transcription) + '<p></p>',
+          text: transcriptHtml(transcription, recordingIdRef.current) + '<p></p>',
         });
 
         // Refresh state so sidebar shows the correct name
@@ -646,7 +659,7 @@ const ProjectSelector: FC<{
         title: "Recording error",
         description: String(error).includes("API key")
           ? "OpenAI API key is required for audio transcription. Please add it in Settings."
-          : "An error occurred. Please try again.",
+          : `${String(error)} Your captured audio is available in Recordings.`,
         status: "error",
         duration: 5000,
         isClosable: true,
@@ -1110,7 +1123,8 @@ const ProjectSelector: FC<{
         />
       </Flex>
 
-      {/* Pinned voice recording button at bottom */}
+      <RecordingRecovery />
+      {/* Recording controls and saved audio */}
       <Box flexShrink={0} pt={2} borderTop="1px solid" borderTopColor="gray.100">
         {isDownloadingModel && (
           <Flex align="center" gap={2} bg="blue.50" borderRadius="full" px={4} py={2} justify="center">
@@ -1122,6 +1136,7 @@ const ProjectSelector: FC<{
         )}
 
         {!isRecording && !isTranscribing && !isDownloadingModel && (
+          <Flex align="center" gap={1}>
           <Button
             leftIcon={isPreparingRecording ? undefined : <Mic size={18} />}
             onClick={startRecording}
@@ -1136,8 +1151,10 @@ const ProjectSelector: FC<{
             loadingText="Starting..."
             isDisabled={isPreparingRecording}
           >
-            Record voice note
+            Record
           </Button>
+          <RecordingSourcePicker value={recordingSource} onChange={setRecordingSource} disabled={isPreparingRecording || isProcessingRecording} />
+          </Flex>
         )}
 
         {isRecording && (
@@ -1156,7 +1173,8 @@ const ProjectSelector: FC<{
                 Stop
               </Button>
             </Flex>
-            {settings.use_local_transcription && (
+            <RecordingMeters recordingId={recordingIdRef.current} source={recordingSource} />
+            {recordingLocalRef.current && (
               <LiveTranscriptPreview update={liveTranscript} />
             )}
           </Box>

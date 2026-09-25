@@ -26,14 +26,16 @@ type Props = {
 
 export const SlideGeneratorModal: FC<Props> = ({ isOpen, onClose, plainText, provider, modelId, sourceId, sourceTitle, initialDeck, onGenerate, onSaveDeck }) => {
   const toast = useToast();
-  const { isSavingEffort, modelEfforts } = useGlobalSettings();
+  const { isSavingEffort, modelEfforts, settings } = useGlobalSettings();
+  // Designed decks call the OpenAI API directly, so ChatGPT sign-in alone can't make them.
+  const canDesign = (provider: string) => provider === 'openai' && !!settings.api_key_open_ai.trim();
   const [audience, setAudience] = useState('');
   const [purpose, setPurpose] = useState('Brief the team');
   const [focus, setFocus] = useState('');
   const [slideCount, setSlideCount] = useState(5);
   const [selectedProvider, setSelectedProvider] = useState(provider);
   const [selectedModel, setSelectedModel] = useState(modelId || DEFAULT_MODELS[provider as ModelProvider]);
-  const [generationStyle, setGenerationStyle] = useState<'designed' | 'simple'>(provider === 'openai' ? 'designed' : 'simple');
+  const [generationStyle, setGenerationStyle] = useState<'designed' | 'simple'>(canDesign(provider) ? 'designed' : 'simple');
   const designedDeck = initialDeck?.kind === 'designed' ? initialDeck : null;
   const [isExporting, setIsExporting] = useState(false);
   const [slides, setSlides] = useState<Slide[]>(initialDeck?.slides || []);
@@ -55,7 +57,7 @@ export const SlideGeneratorModal: FC<Props> = ({ isOpen, onClose, plainText, pro
     if (isOpen) {
       setSelectedProvider(provider);
       setSelectedModel(modelId || DEFAULT_MODELS[provider as ModelProvider]);
-      setGenerationStyle(provider === 'openai' ? 'designed' : 'simple');
+      setGenerationStyle(canDesign(provider) ? 'designed' : 'simple');
     }
   }, [isOpen, provider, modelId]);
 
@@ -128,7 +130,7 @@ export const SlideGeneratorModal: FC<Props> = ({ isOpen, onClose, plainText, pro
               const model = MODEL_OPTIONS.find(item => item.id === event.target.value);
               if (!model) return;
               setSelectedModel(model.id); setSelectedProvider(model.provider);
-              setGenerationStyle(model.provider === 'openai' ? 'designed' : 'simple');
+              setGenerationStyle(canDesign(model.provider) ? 'designed' : 'simple');
             }}>
               {!MODEL_OPTIONS.some(item => item.id === selectedModel) && <option value={selectedModel}>{selectedModel}</option>}
               {MODEL_OPTIONS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
@@ -136,12 +138,12 @@ export const SlideGeneratorModal: FC<Props> = ({ isOpen, onClose, plainText, pro
           {selectedModel && <EffortSelector model={selectedModel} />}
           <Box><Text as="label" htmlFor="slide-style" fontSize="sm" fontWeight="medium">Presentation style</Text>
             <Select id="slide-style" mt={1} value={generationStyle} onChange={event => setGenerationStyle(event.target.value as 'designed' | 'simple')}>
-              {selectedProvider === 'openai' && <option value="designed">Designed PowerPoint</option>}
+              {canDesign(selectedProvider) && <option value="designed">Designed PowerPoint</option>}
               <option value="simple">Simple slides</option>
             </Select>
             <Text fontSize="xs" color="gray.500" mt={2}>{generationStyle === 'designed'
               ? 'The model builds a PowerPoint with layouts and supporting detail suited to your source. It runs in the background and saves automatically.'
-              : 'A faster deck of key points. Preview and edit slides here before exporting. Choose an OpenAI model for a designed PowerPoint.'}</Text></Box>
+              : `A faster deck of key points. Preview and edit slides here before exporting. ${selectedProvider === 'openai' ? 'Designed PowerPoints need an OpenAI API key.' : 'Choose an OpenAI model for a designed PowerPoint.'}`}</Text></Box>
           <Box><Text as="label" htmlFor="slide-audience" fontSize="sm" fontWeight="medium">Who is it for?</Text>
             <Input id="slide-audience" mt={1} value={audience} onChange={event => setAudience(event.target.value)} placeholder="e.g. leadership team, customers, new teammates" /></Box>
           <Box><Text as="label" htmlFor="slide-purpose" fontSize="sm" fontWeight="medium">What should the deck accomplish?</Text>

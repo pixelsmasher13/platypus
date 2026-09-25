@@ -174,13 +174,26 @@ impl WhisperEngine {
     }
 
     pub fn transcribe(&self, samples_16k: &[f32]) -> Result<String> {
-        self.decode(samples_16k, false, None)
+        self.transcribe_with_context(samples_16k, "")
+    }
+
+    pub fn transcribe_with_context(&self, samples_16k: &[f32], prompt: &str) -> Result<String> {
+        self.decode(samples_16k, false, None, prompt)
     }
 
     /// Fast, replaceable preview on the same model. Stop can interrupt this
     /// optional work so final decoding doesn't wait behind an obsolete draft.
     pub fn transcribe_preview(&self, samples_16k: &[f32], cancel: fn() -> bool) -> Result<String> {
-        self.decode(samples_16k, true, Some(cancel))
+        self.transcribe_preview_with_context(samples_16k, cancel, "")
+    }
+
+    pub fn transcribe_preview_with_context(
+        &self,
+        samples_16k: &[f32],
+        cancel: fn() -> bool,
+        prompt: &str,
+    ) -> Result<String> {
+        self.decode(samples_16k, true, Some(cancel), prompt)
     }
 
     fn decode(
@@ -188,8 +201,11 @@ impl WhisperEngine {
         samples_16k: &[f32],
         draft: bool,
         cancel: Option<fn() -> bool>,
+        prompt: &str,
     ) -> Result<String> {
-        if samples_16k.is_empty() {
+        // Never let text hints make a completely silent buffer look like speech.
+        // Normal capture also applies the speech chunker's near-silence gate.
+        if samples_16k.iter().all(|sample| *sample == 0.0) {
             return Ok(String::new());
         }
 
@@ -206,7 +222,17 @@ impl WhisperEngine {
                 patience: -1.0,
             }
         };
+        // Bound actual model tokens as well as text length. Keep the newest
+        // context if non-English names tokenize into unusually many pieces.
+        let prompt: String = prompt.replace('\0', " ").chars().take(641).collect();
+        let prompt_tokens = self
+            .ctx
+            .tokenize(&prompt, 4096)
+            .map_err(|e| anyhow!("Could not tokenize transcription context: {:?}", e))?;
         let mut params = FullParams::new(strategy);
+        if !prompt_tokens.is_empty() {
+            params.set_tokens(&prompt_tokens[prompt_tokens.len().saturating_sub(192)..]);
+        }
         if let Some(cancel_fn) = cancel.as_ref() {
             unsafe extern "C" fn abort_preview(data: *mut std::ffi::c_void) -> bool {
                 let callback = &*(data as *const fn() -> bool);
@@ -217,13 +243,17 @@ impl WhisperEngine {
             // cancel_fn stays alive and immutable until synchronous full returns.
             unsafe {
                 params.set_abort_callback(Some(abort_preview));
-                params.set_abort_callback_user_data(cancel_fn as *const fn() -> bool as *mut std::ffi::c_void);
+                params.set_abort_callback_user_data(
+                    cancel_fn as *const fn() -> bool as *mut std::ffi::c_void,
+                );
             }
         }
         params.set_language(Some("en"));
         params.set_translate(false);
         params.set_single_segment(false);
         params.set_no_timestamps(false);
+        // Clear implicit state; only our explicitly supplied, session-scoped
+        // finalized history is used. This does not disable prompt_tokens.
         params.set_no_context(true);
         params.set_temperature(0.0);
         params.set_temperature_inc(0.0);

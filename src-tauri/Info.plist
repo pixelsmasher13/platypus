@@ -4,6 +4,8 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>Platypus needs microphone access to record voice notes</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Platypus captures meeting audio so it can transcribe the people you hear through speakers or headphones.</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

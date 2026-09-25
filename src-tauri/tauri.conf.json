@@ -31,14 +31,16 @@
         "scope": [
           "$RESOURCE/*",
           "$APPDATA/*",
-          "$APPDATA/podcasts/*"
+          "$APPDATA/podcasts/*",
+          "$APPDATA/recordings/**"
         ]
       },
       "protocol": {
         "asset": true,
         "assetScope": [
           "$APPDATA/*",
-          "$APPDATA/podcasts/*"
+          "$APPDATA/podcasts/*",
+          "$APPDATA/recordings/**"
         ]
       }
     },

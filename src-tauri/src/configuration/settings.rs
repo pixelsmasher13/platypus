@@ -18,6 +18,8 @@ pub struct Settings {
     pub model_openai: String,
     pub model_gemini: String,
     pub use_local_transcription: bool,
+    #[serde(default)]
+    pub keep_recordings: bool,
     pub whisper_model: String,
     pub api_key_elevenlabs: String,
 }

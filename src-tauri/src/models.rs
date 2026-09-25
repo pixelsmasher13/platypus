@@ -48,7 +48,7 @@ pub fn effort_options(model: &str) -> &'static [&'static str] {
     &[]
 }
 
-fn selected_effort<'a>(model: &str, requested: Option<&'a str>) -> Option<&'a str> {
+pub(crate) fn selected_effort<'a>(model: &str, requested: Option<&'a str>) -> Option<&'a str> {
     let options = effort_options(model);
     requested.filter(|effort| options.contains(effort)).or_else(|| options.first().copied())
 }

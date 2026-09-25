@@ -35,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   model_openai: "",
   model_gemini: "",
   use_local_transcription: true,
+  keep_recordings: false,
   whisper_model: "large-v3",
   api_key_elevenlabs: "",
 };
@@ -60,9 +61,13 @@ export type Settings = {
   model_openai: string;
   model_gemini: string;
   use_local_transcription: boolean;
+  keep_recordings: boolean;
   whisper_model: string;
   api_key_elevenlabs: string;
 };
+
+// While signed in, OpenAI chat and note features use the ChatGPT plan instead of the API key.
+export type ChatGptStatus = { signed_in: boolean; email: string | null };
 
 type SettingsContextType = {
   settings: Settings;
@@ -70,6 +75,8 @@ type SettingsContextType = {
   modelEfforts: Record<string, string>;
   setModelEffort: (model: string, effort: string) => Promise<void>;
   isSavingEffort: boolean;
+  chatGpt: ChatGptStatus;
+  setChatGpt: (status: ChatGptStatus) => void;
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -80,6 +87,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
   const [modelEfforts, setModelEfforts] = useState<Record<string, string>>({});
   const [isSavingEffort, setIsSavingEffort] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [chatGpt, setChatGpt] = useState<ChatGptStatus>({ signed_in: false, email: null });
 
   const getSettingOrEmpty = (
     settings: SettingDbItem[],
@@ -112,6 +120,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
       model_openai: getSettingOrEmpty(response, "model_openai") || "",
       model_gemini: getSettingOrEmpty(response, "model_gemini") || "",
       use_local_transcription: getSettingOrEmpty(response, "use_local_transcription") !== "false",
+      keep_recordings: getSettingOrEmpty(response, "keep_recordings") === "true",
       whisper_model: getSettingOrEmpty(response, "whisper_model") || "large-v3",
       api_key_elevenlabs: getSettingOrEmpty(response, "api_key_elevenlabs") || "",
     };
@@ -132,6 +141,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
         console.error("invoke get_latest_settings Error:", parsed.error);
       }
     });
+    invoke<ChatGptStatus>("chatgpt_status").then(setChatGpt).catch(console.error);
   }, []);
 
   const update: Update = async (newSettings) => {
@@ -142,7 +152,7 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
         await disable();
       }
     }
-    updateSettingsOnRust(newSettings);
+    await updateSettingsOnRust(newSettings);
     setSettings(newSettings);
     return Promise.resolve();
   };
@@ -156,14 +166,14 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
   };
 
   return (
-    <SettingsContext.Provider value={{ settings, update, modelEfforts, setModelEffort, isSavingEffort }}>
+    <SettingsContext.Provider value={{ settings, update, modelEfforts, setModelEffort, isSavingEffort, chatGpt, setChatGpt }}>
       {children}
     </SettingsContext.Provider>
   );
 };
 
 const updateSettingsOnRust = (settings: Settings) => {
-  invoke("update_settings", { settings }).then();
+  return invoke("update_settings", { settings });
 };
 
 export const useGlobalSettings = (): SettingsContextType => {

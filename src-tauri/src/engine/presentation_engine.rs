@@ -11,6 +11,10 @@ use platypus_notes::{
 use serde::Deserialize;
 use std::{path::PathBuf, time::Instant};
 
+// Designed decks call the OpenAI API directly (Code Interpreter and file downloads),
+// so they need an API key even when signed in with ChatGPT.
+const DESIGNED_NEEDS_KEY: &str = "Designed PowerPoints need an OpenAI API key. Add one in Settings, or choose Simple slides.";
+
 fn library_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path_resolver()
         .app_data_dir()
@@ -64,10 +68,10 @@ pub async fn generate_saved_presentation(
         }
         let key = app_handle
             .db(|db| get_setting(db, "api_key_open_ai"))
-            .map_err(|_| "Add an OpenAI API key in Settings.".to_string())?
+            .map_err(|_| DESIGNED_NEEDS_KEY.to_string())?
             .setting_value;
         if key.trim().is_empty() {
-            return Err("Add an OpenAI API key in Settings.".into());
+            return Err(DESIGNED_NEEDS_KEY.into());
         }
         let body = presentation_request(
             &request.plain_text,

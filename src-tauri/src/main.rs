@@ -142,6 +142,10 @@ async fn main() {
         .invoke_handler(tauri::generate_handler![
             update_settings,
             set_model_effort,
+            engine::chatgpt_auth::chatgpt_sign_in,
+            engine::chatgpt_auth::chatgpt_cancel_sign_in,
+            engine::chatgpt_auth::chatgpt_sign_out,
+            engine::chatgpt_auth::chatgpt_status,
             get_latest_settings,
             send_prompt_to_llm,
             send_prompt_to_openai,
@@ -179,6 +183,13 @@ async fn main() {
             start_audio_recording,
             stop_audio_recording,
             read_audio_file,
+            get_audio_capture_status,
+            list_recordings,
+            list_recording_transcripts,
+            attach_recording,
+            recording_audio_path,
+            export_recording,
+            retranscribe_recording,
             transcribe_audio,
             extract_document_text,
             ingest_url_command,
@@ -281,6 +292,11 @@ fn setup_keypress_listener(app_handle: &AppHandle) {
 #[tauri::command]
 fn get_latest_settings(app_handle: AppHandle) -> Result<Vec<Setting>, ()> {
     let settings = app_handle.db(|db| get_settings(db).unwrap());
+    // ChatGPT tokens stay in the backend; the UI reads `chatgpt_status` instead.
+    let settings = settings
+        .into_iter()
+        .filter(|s| !s.setting_key.starts_with(engine::chatgpt_auth::SECRET_PREFIX))
+        .collect();
     return Ok(settings);
 }
 
@@ -405,6 +421,14 @@ async fn update_settings(app_handle: AppHandle, settings: Settings) {
             Setting {
                 setting_key: String::from("use_local_transcription"),
                 setting_value: format!("{}", settings.use_local_transcription),
+            },
+        )
+        .unwrap();
+        insert_or_update_setting(
+            db,
+            Setting {
+                setting_key: String::from("keep_recordings"),
+                setting_value: settings.keep_recordings.to_string(),
             },
         )
         .unwrap();
@@ -824,19 +848,26 @@ fn prompt_for_accessibility_permissions() {
     // No-op for non-macOS platforms
 }
 
+mod recording_commands;
+use recording_commands::*;
+
 // Audio recording commands — dual mode (file-based for OpenAI, buffer for local Whisper)
 #[tauri::command]
-async fn start_audio_recording(app_handle: AppHandle, use_local: bool) -> Result<String, String> {
+async fn start_audio_recording(app_handle: AppHandle, use_local: bool, note_id: Option<i64>, source: Option<String>) -> Result<String, String> {
     let mut task = LOCAL_TRANSCRIPTION_TASK.lock().await;
     if task.is_some() { return Err("Finish the previous recording first.".into()); }
+    if use_local && WHISPER_ENGINE.lock().unwrap().is_none() {
+        return Err("The local model is not ready. Start recording again to initialize it.".into());
+    }
+    let root = recording_root(&app_handle)?;
+    let model = if use_local { get_whisper_model_id(&app_handle) } else { "whisper-1".into() };
+    let keep_audio = app_handle.db(|db| get_setting(db, "keep_recordings").map(|s| s.setting_value == "true").unwrap_or(false));
+    let id = crate::engine::audio_engine::start_recording(root, note_id, source.unwrap_or_else(|| if cfg!(target_os = "macos") { "both" } else { "microphone" }.into()), use_local, model, keep_audio).await?;
     if use_local {
-        crate::engine::audio_engine::start_recording_local().await?;
         ACCUMULATED_TRANSCRIPT.lock().unwrap().clear();
         *task = Some(tokio::spawn(realtime_transcription_loop(app_handle)));
-        Ok("local".to_string())
-    } else {
-        crate::engine::audio_engine::start_recording().await
     }
+    Ok(id)
 }
 
 #[tauri::command]
@@ -846,7 +877,7 @@ async fn stop_audio_recording(app_handle: AppHandle, use_local: bool) -> Result<
         // cannot receive text from jobs belonging to an earlier session.
         let mut task = LOCAL_TRANSCRIPTION_TASK.lock().await;
         if task.is_none() { return Err("No local recording to finish.".into()); }
-        let capture_result = crate::engine::audio_engine::stop_recording_local().await;
+        let capture_result = crate::engine::audio_engine::stop_recording().await;
         let final_result = if let Some(handle) = task.take() {
             handle.await.map_err(|e| format!("Transcription worker failed: {}", e))?
         } else {
@@ -854,6 +885,8 @@ async fn stop_audio_recording(app_handle: AppHandle, use_local: bool) -> Result<
         };
         capture_result?;
         let final_text = final_result?;
+        let id = crate::engine::audio_engine::capture_status().recording_id;
+        platypus_notes::recording_audio::finish_transcription(&recording_root(&app_handle)?, &id, &final_text)?;
         if let Some(w) = app_handle.get_window("main") {
             let _ = w.emit("transcript-update", serde_json::json!({ "text": final_text, "committed_text": final_text, "draft_text": "", "is_final": true }));
         }
@@ -896,11 +929,12 @@ async fn transcribe_audio(
     .await
     .map_err(|e| format!("Transcription failed: {}", e))?;
 
-    // Clean up the audio file after transcription
-    if let Err(err) = std::fs::remove_file(&file_path) {
-        log::warn!("Failed to delete audio file {}: {}", file_path, err);
-    } else {
-        log::info!("Successfully deleted audio file: {}", file_path);
+    // Keep transcript recovery metadata even when temporary audio is removed.
+    if let Some(id) = std::path::Path::new(&file_path).parent().and_then(|p| p.file_name()).and_then(|s| s.to_str()) {
+        let root = recording_root(&app_handle)?;
+        if platypus_notes::recording_audio::load(&root, id).is_ok() {
+            platypus_notes::recording_audio::finish_transcription(&root, id, &transcription)?;
+        }
     }
 
     Ok(transcription)
@@ -931,6 +965,10 @@ async fn download_whisper_model(app_handle: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn init_whisper_model(app_handle: AppHandle) -> Result<(), String> {
+    let session = LOCAL_TRANSCRIPTION_TASK.try_lock().map_err(|_| "Finish the current transcription first.".to_string())?;
+    if session.is_some() || crate::engine::audio_engine::IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Finish the current recording before changing the transcription model.".into());
+    }
     let model_id = get_whisper_model_id(&app_handle);
     let engine = tokio::task::spawn_blocking(move || {
         crate::engine::whisper_engine::WhisperEngine::load(&model_id)
@@ -952,15 +990,15 @@ fn get_transcript() -> String {
 }
 
 /// Decode one complete utterance, without text post-processing or phrase removal.
-fn process_and_transcribe_chunk(raw_samples: &[f32], device_rate: u32, draft: bool) -> Result<String, String> {
+fn process_and_transcribe_chunk(raw_samples: &[f32], device_rate: u32, draft: bool, prompt: &str) -> Result<String, String> {
     let samples_16k = crate::engine::audio_processor::resample(raw_samples, device_rate, 16000)
         .map_err(|e| format!("Audio resampling failed: {}", e))?;
     let guard = WHISPER_ENGINE.lock().unwrap();
     let engine = guard.as_ref().ok_or_else(|| "Whisper engine not initialized".to_string())?;
     let result = if draft {
-        engine.transcribe_preview(&samples_16k, || !crate::engine::audio_engine::IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst))
+        engine.transcribe_preview_with_context(&samples_16k, || !crate::engine::audio_engine::IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst), prompt)
     } else {
-        engine.transcribe(&samples_16k)
+        engine.transcribe_with_context(&samples_16k, prompt)
     };
     result.map_err(|e| format!("Whisper transcription failed: {}", e))
 }
@@ -982,7 +1020,8 @@ async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, St
         let mut chunks = chunker.push(&take_new_samples());
         if finished { chunks.extend(chunker.finish()); }
         for chunk in chunks {
-            let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&chunk, device_rate, false)).await;
+            let prompt = platypus_notes::transcription_context::transcription_prompt("", transcript.committed());
+            let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&chunk, device_rate, false, &prompt)).await;
             let text = match result {
                 Ok(Ok(text)) => text,
                 error => {
@@ -1001,7 +1040,8 @@ async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, St
         // later previews replace the entire unfinished utterance, never append.
         if IS_RECORDING.load(Ordering::SeqCst) && last_preview.elapsed() >= std::time::Duration::from_secs(2) {
             if let Some(audio) = chunker.take_preview() {
-                let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&audio, device_rate, true)).await;
+                let prompt = platypus_notes::transcription_context::transcription_prompt("", transcript.committed());
+                let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&audio, device_rate, true, &prompt)).await;
                 last_preview = std::time::Instant::now();
                 if IS_RECORDING.load(Ordering::SeqCst) {
                     match result {

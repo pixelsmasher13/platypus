@@ -1,3 +1,4 @@
+use crate::engine::chatgpt_auth;
 use crate::engine::model_settings::saved_effort;
 use platypus_notes::models::claude_request;
 use platypus_notes::models::{DEFAULT_OPENAI_MODEL, send_openai};
@@ -437,13 +438,23 @@ async fn call_openai(
     model_id: Option<String>,
     system_prompt: &str,
 ) -> Result<String, String> {
+    let model_to_use = selected_model(model_id.as_deref(), DEFAULT_OPENAI_MODEL);
+
+    if chatgpt_auth::is_signed_in(app_handle) {
+        let effort = saved_effort(app_handle, model_to_use);
+        let text = chatgpt_auth::complete(
+            app_handle, model_to_use, system_prompt, &[("user", plain_text)], effort.as_deref(), |_| Ok(()),
+        )
+        .await?;
+        debug!("ChatGPT cleanup complete, {} chars", text.len());
+        return Ok(text.trim().to_string());
+    }
+
     let setting = app_handle.db(|db| get_setting(db, "api_key_open_ai").expect("Failed on api_key_open_ai"));
 
     if setting.setting_value.is_empty() {
-        return Err("OpenAI API key is not configured. Please set it in Settings.".to_string());
+        return Err("Add an OpenAI API key or sign in with ChatGPT in Settings.".to_string());
     }
-
-    let model_to_use = selected_model(model_id.as_deref(), DEFAULT_OPENAI_MODEL);
 
     let messages: Vec<ChatCompletionRequestMessage> = vec![
         ChatCompletionRequestSystemMessageArgs::default()

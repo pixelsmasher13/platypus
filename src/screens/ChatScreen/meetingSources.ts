@@ -1,6 +1,6 @@
 // Transcript sections live in the note's HTML, so they survive saving, reopening,
 // moving projects, and export without a second store getting out of sync.
-export type NoteNode = { type?: string; text?: string; content?: NoteNode[] };
+export type NoteNode = { type?: string; attrs?: Record<string, unknown>; text?: string; content?: NoteNode[] };
 export type MeetingSources = { notes: string; transcript: string };
 
 function nodeText(node: NoteNode): string {
@@ -25,13 +25,13 @@ export function extractMeetingSources(document: NoteNode): MeetingSources {
   return { notes: notes.filter(Boolean).join('\n\n'), transcript: transcripts.filter(Boolean).join('\n\n') };
 }
 
-export function transcriptNode(text: string): NoteNode {
-  return { type: 'transcript', content: text.split(/\r?\n/).map(line => ({
+export function transcriptNode(text: string, recordingId?: string | null): NoteNode {
+  return { type: 'transcript', ...(recordingId ? { attrs: { recordingId } } : {}), content: text.split(/\r?\n/).map(line => ({
     type: 'paragraph', ...(line ? { content: [{ type: 'text', text: line }] } : {}),
   })) };
 }
 
-export function transcriptHtml(text: string): string {
+export function transcriptHtml(text: string, recordingId?: string | null): string {
   const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  return `<section data-transcript="true">${text.split(/\r?\n/).map(line => `<p>${escape(line)}</p>`).join('')}</section>`;
+  return `<section data-transcript="true"${recordingId ? ` data-recording-id="${escape(recordingId)}"` : ''}>${text.split(/\r?\n/).map(line => `<p>${escape(line)}</p>`).join('')}</section>`;
 }

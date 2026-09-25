@@ -18,3 +18,4 @@ pub use platypus_notes::audio_processor;
 pub mod podcast_generator;
 
 pub mod model_settings;
+pub mod chatgpt_auth;

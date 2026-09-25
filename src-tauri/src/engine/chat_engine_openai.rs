@@ -1,3 +1,4 @@
+use crate::engine::chatgpt_auth;
 use crate::engine::model_settings::saved_effort;
 use platypus_notes::models::{selected_model, DEFAULT_OPENAI_MODEL, QUICK_OPENAI_MODEL, send_openai, StreamLines};
 use crate::configuration::state::ServiceAccess;
@@ -90,6 +91,57 @@ pub async fn send_prompt_to_openai(
         BASE_SYSTEM.to_string()
     };
 
+    // Selected-document context rides on the first user message when retrieval found nothing.
+    let turns: Vec<(&str, String)> = conversation_history
+        .iter()
+        .enumerate()
+        .map(|(i, msg)| {
+            let mut content = msg.content.clone();
+            if i == 0 && msg.role == "user" && !combined_activity_text.is_empty() && filtered_context.is_empty() {
+                content = format!(
+                    "{}\n\nContext from selected documents:\n{}",
+                    content, combined_activity_text
+                );
+            }
+            (if msg.role == "user" { "user" } else { "assistant" }, content)
+        })
+        .collect();
+
+    let effort = saved_effort(&app_handle, model_to_use);
+    let completion = if chatgpt_auth::is_signed_in(&app_handle) {
+        let turns: Vec<(&str, &str)> = turns.iter().map(|(role, text)| (*role, text.as_str())).collect();
+        let window = app_handle.get_window("main").expect("Failed to get main window");
+        chatgpt_auth::complete(&app_handle, model_to_use, &system_prompt, &turns, effort.as_deref(), |text| {
+            window.emit("llm_response", text).map_err(|e| format!("Failed to emit response: {}", e))
+        })
+        .await?
+    } else {
+        stream_with_api_key(&app_handle, &setting.setting_value, model_to_use, system_prompt, &turns, effort.as_deref()).await?
+    };
+
+    // Estimate token usage based on word count
+    let word_count = completion.split_whitespace().count();
+    let output_tokens = (word_count as f64 * 0.75) as i64;
+
+    // Emit the estimated token usage to the frontend
+    app_handle
+        .get_window("main")
+        .expect("Failed to get main window")
+        .emit("output_tokens", output_tokens)
+        .map_err(|e| format!("Failed to emit estimated tokens: {}", e))?;
+
+    debug!("OpenAI response complete - estimated tokens: {}", output_tokens);
+    Ok(())
+}
+
+async fn stream_with_api_key(
+    app_handle: &tauri::AppHandle,
+    api_key: &str,
+    model: &str,
+    system_prompt: String,
+    turns: &[(&str, String)],
+    effort: Option<&str>,
+) -> Result<String, String> {
     // Build messages array using OpenAI's native multi-turn format
     let mut messages: Vec<ChatCompletionRequestMessage> = vec![
         ChatCompletionRequestSystemMessageArgs::default()
@@ -100,18 +152,9 @@ pub async fn send_prompt_to_openai(
     ];
 
     // Add conversation history
-    for (i, msg) in conversation_history.iter().enumerate() {
-        let mut content = msg.content.clone();
-
-        // Add combined_activity_text to first user message if no RAG context
-        if i == 0 && msg.role == "user" && !combined_activity_text.is_empty() && filtered_context.is_empty() {
-            content = format!(
-                "{}\n\nContext from selected documents:\n{}",
-                content, combined_activity_text
-            );
-        }
-
-        if msg.role == "user" {
+    for (role, content) in turns {
+        let content = content.clone();
+        if *role == "user" {
             messages.push(
                 ChatCompletionRequestUserMessageArgs::default()
                     .content(content)
@@ -131,15 +174,14 @@ pub async fn send_prompt_to_openai(
     }
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model(model_to_use)
+        .model(model)
         .messages(messages)
         .build()
         .map_err(|e| format!("Failed to build request: {}", e))?;
 
-    let effort = saved_effort(&app_handle, model_to_use);
     let mut payload = serde_json::to_value(request).map_err(|e| e.to_string())?;
     payload["stream"] = serde_json::json!(true);
-    let mut stream = send_openai(&setting.setting_value, payload, effort.as_deref()).await?.bytes_stream();
+    let mut stream = send_openai(api_key, payload, effort).await?.bytes_stream();
     let mut lines = StreamLines::default();
     let mut completion = String::new();
     let mut finished = false;
@@ -169,20 +211,7 @@ pub async fn send_prompt_to_openai(
     if completion.trim().is_empty() {
         return Err("OpenAI returned no text. Please try again.".into());
     }
-
-    // Estimate token usage based on word count
-    let word_count = completion.split_whitespace().count();
-    let output_tokens = (word_count as f64 * 0.75) as i64;
-
-    // Emit the estimated token usage to the frontend
-    app_handle
-        .get_window("main")
-        .expect("Failed to get main window")
-        .emit("output_tokens", output_tokens)
-        .map_err(|e| format!("Failed to emit estimated tokens: {}", e))?;
-
-    debug!("OpenAI response complete - estimated tokens: {}", output_tokens);
-    Ok(())
+    Ok(completion)
 }
 
 #[tauri::command]
@@ -199,6 +228,15 @@ pub async fn generate_conversation_name(
         "Name the conversation based on the user input. Use a total of 18 characters or less, without quotation marks. Use proper English, don't skip spaces between words. You only need to answer with the name. The following is the user input: \n\n{}\n\n.:",
         user_input
     );
+    const NAME_REQUEST: &str = "Please generate a concise name for the conversation based on the user input.";
+
+    if chatgpt_auth::is_signed_in(&app_handle) {
+        let name = chatgpt_auth::complete(
+            &app_handle, QUICK_OPENAI_MODEL, &system_prompt, &[("user", NAME_REQUEST)], None, |_| Ok(()),
+        )
+        .await?;
+        return Ok(name.trim().to_string());
+    }
 
     let request = CreateChatCompletionRequestArgs::default()
         .model(QUICK_OPENAI_MODEL)
@@ -211,9 +249,7 @@ pub async fn generate_conversation_name(
                 .into(), // Convert to correct type
             // Use the correct message type for the user message
             ChatCompletionRequestUserMessageArgs::default()
-                .content(
-                    "Please generate a concise name for the conversation based on the user input.",
-                )
+                .content(NAME_REQUEST)
                 .build()
                 .unwrap()
                 .into(), // Convert to correct type

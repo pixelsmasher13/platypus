@@ -34,3 +34,10 @@ test('preserves spacing between rich-text fragments and line breaks in user note
     { type: 'text', text: ' interviews.' }, { type: 'hardBreak' }, { type: 'text', text: 'No decision.' },
   ] })).notes, 'Only 12 interviews.\nNo decision.');
 });
+
+test('links audio to the exact transcript without adding metadata to meeting prompts', () => {
+  const transcript = transcriptNode('Actual words', '20260925-123');
+  assert.equal(transcript.attrs.recordingId, '20260925-123');
+  assert.deepEqual(extractMeetingSources(doc(transcript)), { notes: '', transcript: 'Actual words' });
+  assert.equal(transcriptHtml('Actual words', '20260925-123'), '<section data-transcript="true" data-recording-id="20260925-123"><p>Actual words</p></section>');
+});

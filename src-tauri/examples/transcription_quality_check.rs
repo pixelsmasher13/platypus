@@ -4,8 +4,18 @@
 #[allow(dead_code)]
 mod whisper_engine;
 use platypus_notes::transcription_audio::{LiveTranscript, SpeechChunker};
+use platypus_notes::transcription_context::transcription_prompt;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
+    let hints = args
+        .windows(2)
+        .find(|pair| pair[0] == "--context")
+        .map(|pair| pair[1].as_str());
+    let prompt = |committed: &str| {
+        hints
+            .map(|h| transcription_prompt(h, committed))
+            .unwrap_or_default()
+    };
     let path = args.get(1).ok_or("Expected a mono 16kHz WAV path")?;
     let mut wav = hound::WavReader::open(path)?;
     assert_eq!(wav.spec().sample_rate, 16000);
@@ -17,7 +27,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine =
         whisper_engine::WhisperEngine::load(args.get(2).map(String::as_str).unwrap_or("large-v3"))?;
     if args.iter().any(|arg| arg == "--drafts") {
-        assert!(engine.transcribe_preview(&speech, || true).is_err(), "Stop should cancel provisional inference");
+        assert!(
+            engine
+                .transcribe_preview_with_context(&speech, || true, &prompt(""))
+                .is_err(),
+            "Stop should cancel provisional inference"
+        );
         println!("Preview cancellation passed; running final quality checks on the same engine.");
     }
     for (label, audio) in [
@@ -45,13 +60,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut count = 0;
         for packet in audio.chunks(800) {
             for chunk in chunker.push(packet) {
-                transcript.commit(&engine.transcribe(&chunk)?);
+                let text =
+                    engine.transcribe_with_context(&chunk, &prompt(transcript.committed()))?;
+                transcript.commit(&text);
                 count += 1;
             }
             if drafts {
                 if let Some(preview) = chunker.take_preview() {
                     let started = std::time::Instant::now();
-                    transcript.revise(engine.transcribe_preview(&preview, || false)?);
+                    transcript.revise(engine.transcribe_preview_with_context(
+                        &preview,
+                        || false,
+                        &prompt(transcript.committed()),
+                    )?);
                     println!(
                         "  draft ({:.2}s): {}",
                         started.elapsed().as_secs_f32(),
@@ -61,7 +82,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         for chunk in chunker.finish() {
-            transcript.commit(&engine.transcribe(&chunk)?);
+            let text = engine.transcribe_with_context(&chunk, &prompt(transcript.committed()))?;
+            transcript.commit(&text);
             count += 1;
         }
         println!("{} ({} chunks): {}", label, count, transcript.committed());
