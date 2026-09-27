@@ -1,4 +1,5 @@
 import { RecordingsButton } from "../components/RecordingsButton";
+import { isMac } from "../components/RecordingControls";
 import { EffortSelector } from "../screens/ChatScreen/components/EffortSelector";
 import { DEFAULT_MODELS } from "../models/models";
 import { useEffect, useRef, useState } from "react";
@@ -33,6 +34,8 @@ type LocalSettings = {
   keepRecordings: boolean;
   whisperModel: string;
   apiKeyElevenlabs: string;
+  recordMeetingAudio: boolean;
+  recordMicrophone: boolean;
 };
 export const GeneralSettings = () => {
   const toast = useToast();
@@ -56,6 +59,8 @@ export const GeneralSettings = () => {
       keepRecordings: settings.keep_recordings,
     whisperModel: settings.whisper_model,
     apiKeyElevenlabs: settings.api_key_elevenlabs,
+    recordMeetingAudio: settings.record_meeting_audio,
+    recordMicrophone: settings.record_microphone,
   });
 
   useEffect(() => {
@@ -76,6 +81,8 @@ export const GeneralSettings = () => {
       keepRecordings: settings.keep_recordings,
       whisperModel: settings.whisper_model,
       apiKeyElevenlabs: settings.api_key_elevenlabs,
+      recordMeetingAudio: settings.record_meeting_audio,
+      recordMicrophone: settings.record_microphone,
     });
   }, [settings]);
 
@@ -193,6 +200,8 @@ export const GeneralSettings = () => {
         keep_recordings: localSettings.keepRecordings,
         whisper_model: localSettings.whisperModel,
         api_key_elevenlabs: localSettings.apiKeyElevenlabs,
+        record_meeting_audio: localSettings.recordMeetingAudio,
+        record_microphone: localSettings.recordMicrophone,
       });
       savedSuccessfullyToast();
     } catch (error) {
@@ -295,6 +304,23 @@ export const GeneralSettings = () => {
           <Text fontSize="sm" color="gray.500" mb={2}>Keep audio for playback and retranscription. When off, new audio is removed after successful transcription. Existing recordings and audio that needs recovery are kept.</Text>
           <RecordingsButton />
         </Box>
+
+        {isMac && (
+          <Box>
+            <Text fontSize="md" mb={2}>Meeting audio</Text>
+            <Flex alignItems="center" mb={2} gap={4}>
+              <Text as="label" htmlFor="record-meeting-audio" flex={1}>Include your computer's audio</Text>
+              <Switch id="record-meeting-audio" isChecked={localSettings.recordMeetingAudio} isDisabled={!localSettings.recordMicrophone}
+                onChange={e => setLocalSettings(prev => ({ ...prev, recordMeetingAudio: e.target.checked }))} />
+            </Flex>
+            <Flex alignItems="center" mb={2} gap={4}>
+              <Text as="label" htmlFor="record-microphone" flex={1}>Include your microphone</Text>
+              <Switch id="record-microphone" isChecked={localSettings.recordMicrophone} isDisabled={!localSettings.recordMeetingAudio}
+                onChange={e => setLocalSettings(prev => ({ ...prev, recordMicrophone: e.target.checked }))} />
+            </Flex>
+            <Text fontSize="sm" color="gray.500">Computer audio is what you hear in Zoom, Teams, or Meet, so remote voices are transcribed even on headphones. Turn the microphone off to record a webinar without room noise. One source always stays on.</Text>
+          </Box>
+        )}
 
         <Box>
           <Flex alignItems="center" mb={2}>

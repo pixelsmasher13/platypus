@@ -38,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   keep_recordings: false,
   whisper_model: "large-v3",
   api_key_elevenlabs: "",
+  record_meeting_audio: true,
+  record_microphone: true,
 };
 
 type Update = {
@@ -64,6 +66,8 @@ export type Settings = {
   keep_recordings: boolean;
   whisper_model: string;
   api_key_elevenlabs: string;
+  record_meeting_audio: boolean;
+  record_microphone: boolean;
 };
 
 // While signed in, OpenAI chat and note features use the ChatGPT plan instead of the API key.
@@ -123,6 +127,8 @@ export const SettingsProvider: FC<PropsWithChildren> = ({ children }) => {
       keep_recordings: getSettingOrEmpty(response, "keep_recordings") === "true",
       whisper_model: getSettingOrEmpty(response, "whisper_model") || "large-v3",
       api_key_elevenlabs: getSettingOrEmpty(response, "api_key_elevenlabs") || "",
+      record_meeting_audio: getSettingOrEmpty(response, "record_meeting_audio") !== "false",
+      record_microphone: getSettingOrEmpty(response, "record_microphone") !== "false",
     };
   };
 

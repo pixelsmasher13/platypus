@@ -22,4 +22,13 @@ pub struct Settings {
     pub keep_recordings: bool,
     pub whisper_model: String,
     pub api_key_elevenlabs: String,
+    // Which sources the recorder uses; a per-recording picker was replaced by these switches.
+    #[serde(default = "default_true")]
+    pub record_meeting_audio: bool,
+    #[serde(default = "default_true")]
+    pub record_microphone: bool,
+}
+
+fn default_true() -> bool {
+    true
 }

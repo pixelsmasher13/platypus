@@ -1,5 +1,6 @@
 import { RecordingRecovery, useRecordingOwner } from "../../components/RecordingRecovery";
-import { RecordingSourcePicker, RecordingMeters, MeetingAudioPermissionNotice, useMeetingAudioPermission, needsMeetingAudio, defaultRecordingSource, type RecordingSource } from "../../components/RecordingControls";
+import { RecordingMeters, MeetingAudioPermissionNotice, RecordingSourceCaption, useRecordingSource } from "../../components/RecordingControls";
+import { effectiveRecordingSource } from "../../components/recordingSource";
 import { transcriptHtml, type TranscriptSegment } from "../../screens/ChatScreen/meetingSources";
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
 import { type FC, useState, useMemo, useRef, useEffect } from "react";
@@ -317,7 +318,7 @@ const ProjectSelector: FC<{
   const [searchTerm, setSearchTerm] = useState("");
   
   // Voice note recording states
-  const [recordingSource, setRecordingSource] = useState<RecordingSource>(defaultRecordingSource);
+  const { source: recordingSource, preferred: preferredRecordingSource, meetingAudio } = useRecordingSource();
   const recordingIdRef = useRef<string | null>(null);
   const recordingLocalRef = useRef(true);
   const [isRecording, setIsRecording] = useState(false);
@@ -342,7 +343,6 @@ const ProjectSelector: FC<{
   }, []);
   
   const toast = useToast();
-  const meetingAudio = useMeetingAudioPermission();
   const { settings } = useGlobalSettings();
 
   // Filter projects by name
@@ -503,12 +503,6 @@ const ProjectSelector: FC<{
       return;
     }
 
-    if (needsMeetingAudio(recordingSource) && !(await meetingAudio.refresh())) {
-      await meetingAudio.request();
-      toast({ title: "Meeting audio isn't allowed yet", description: "Allow Platypus under Screen & System Audio Recording and restart, or switch to Microphone only.", status: "warning", duration: 6000, isClosable: true });
-      return;
-    }
-
     setIsPreparingRecording(true);
 
     try {
@@ -537,7 +531,8 @@ const ProjectSelector: FC<{
       setLiveTranscript(null);
 
       // Start recording via Tauri
-      const result = await invoke<string>('start_audio_recording', { useLocal, source: recordingSource });
+      const source = effectiveRecordingSource(preferredRecordingSource, await meetingAudio.refresh());
+      const result = await invoke<string>('start_audio_recording', { useLocal, source });
       recordingIdRef.current = result;
       recordingLocalRef.current = useLocal;
       if (!useLocal) {
@@ -1165,10 +1160,10 @@ const ProjectSelector: FC<{
           >
             Record
           </Button>
-          <RecordingSourcePicker value={recordingSource} onChange={setRecordingSource} disabled={isPreparingRecording || isProcessingRecording} />
           </Flex>
         )}
-        {!isRecording && <MeetingAudioPermissionNotice source={recordingSource} />}
+        {!isRecording && !isTranscribing && !isDownloadingModel && <RecordingSourceCaption source={recordingSource} />}
+        {!isRecording && <MeetingAudioPermissionNotice preferred={preferredRecordingSource} />}
 
         {isRecording && (
           <Box>

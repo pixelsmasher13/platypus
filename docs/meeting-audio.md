@@ -2,11 +2,13 @@
 
 ## Capture
 
-The native recorder supports three explicit source choices:
+The native recorder supports three source combinations, chosen with two switches in Settings > General > Meeting audio rather than per recording. The Record button shows the active one.
 
-- **Mic + meeting audio** (default on macOS): default input device plus the computer's audio.
-- **Microphone only**: voice notes and in-person meetings; also the current Windows path.
-- **Meeting audio only**: capture remote speakers or a presentation without room noise.
+- **Mic + meeting audio** (both switches on; default on macOS): default input device plus the computer's audio.
+- **Microphone only** (computer audio off): voice notes and in-person meetings; also the only Windows path.
+- **Meeting audio only** (microphone off): capture remote speakers or a presentation without room noise.
+
+On a Mac that has not yet allowed meeting audio, the recorder uses the microphone and an inline notice beside Record says so; the setting itself is unchanged and applies once the permission is granted.
 
 macOS system capture uses ScreenCaptureKit on macOS 13+. Only an audio stream output is registered. No screenshots, video, MP4, meeting-platform integration, or meeting bot is used. All eligible computer audio is captured, except Platypus's own process; this is not a per-meeting-app filter. Apple documents the audio options on [SCStreamConfiguration](https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration).
 
@@ -49,7 +51,7 @@ Automated checks cover source timing across silence/late packets, streaming resa
 
 These checks do not establish real-call quality or exercise the macOS permission dialog. Before considering live-call validation complete, run the built app and:
 
-1. Grant its macOS capture permission and select **Mic + meeting audio**.
+1. Grant its macOS capture permission and keep both Meeting audio switches on in Settings.
 2. With headphones, speak a short sentence while another participant speaks a different sentence. Confirm both meters respond and both sentences reach the final transcript.
 3. Replay/export the recording. Verify the left source contains the microphone and the right contains the remote participant. Compare their timing in an audio editor.
 4. Repeat with each single-source mode, then deny system capture and confirm the error offers microphone-only as an explicit alternative.

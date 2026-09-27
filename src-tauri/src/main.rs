@@ -440,6 +440,22 @@ async fn update_settings(app_handle: AppHandle, settings: Settings) {
         insert_or_update_setting(
             db,
             Setting {
+                setting_key: String::from("record_meeting_audio"),
+                setting_value: settings.record_meeting_audio.to_string(),
+            },
+        )
+        .unwrap();
+        insert_or_update_setting(
+            db,
+            Setting {
+                setting_key: String::from("record_microphone"),
+                setting_value: settings.record_microphone.to_string(),
+            },
+        )
+        .unwrap();
+        insert_or_update_setting(
+            db,
+            Setting {
                 setting_key: String::from("whisper_model"),
                 setting_value: settings.whisper_model.clone(),
             },

@@ -1,28 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, AlertDescription, Box, Button, HStack, IconButton, Menu, MenuButton, MenuItemOption, MenuList, MenuOptionGroup, Progress, Text, VStack } from '@chakra-ui/react';
-import { ChevronDown } from 'lucide-react';
+import { Alert, AlertDescription, Box, Button, HStack, Progress, Text, VStack } from '@chakra-ui/react';
 import { invoke } from '@tauri-apps/api/tauri';
+import { useGlobalSettings } from '../Providers/SettingsProvider';
+import { effectiveRecordingSource, preferredRecordingSource, recordingSourceNames, type RecordingSource } from './recordingSource';
 
-export type RecordingSource = 'both' | 'microphone' | 'system';
-const isMac = /Mac/.test(navigator.platform);
-export const defaultRecordingSource: RecordingSource = isMac ? 'both' : 'microphone';
-const sourceNames: Record<RecordingSource, string> = { both: 'Mic + meeting audio', microphone: 'Microphone only', system: 'Meeting audio only' };
-export function RecordingSourcePicker({ value, onChange, disabled }: { value: RecordingSource; onChange: (value: RecordingSource) => void; disabled?: boolean }) {
-  if (!isMac) return null;
-  return <Menu>
-    <MenuButton as={IconButton} size="sm" variant="ghost" icon={<ChevronDown size={14} />} isDisabled={disabled} aria-label="Recording options" title="Recording options" />
-    <MenuList fontSize="sm">
-      <MenuOptionGroup title="Audio source" type="radio" value={value} onChange={source => onChange(source as RecordingSource)}>
-        {(['both', 'microphone', 'system'] as const).map(source => <MenuItemOption key={source} value={source}>{sourceNames[source]}</MenuItemOption>)}
-      </MenuOptionGroup>
-    </MenuList>
-  </Menu>;
-}
+export { recordingSourceNames, type RecordingSource } from './recordingSource';
+export const isMac = /Mac/.test(navigator.platform);
 
 // Screen & System Audio Recording has no in-app Allow button: macOS sends the user to
 // System Settings and applies the grant after Platypus relaunches. Ask early and keep
 // the state visible so Record never fails in the middle of a meeting.
-export const needsMeetingAudio = (source: RecordingSource) => isMac && source !== 'microphone';
 export function useMeetingAudioPermission() {
   const [granted, setGranted] = useState<boolean | null>(isMac ? null : true);
   const refresh = useCallback(async () => {
@@ -44,16 +31,31 @@ export function useMeetingAudioPermission() {
   const allow = useCallback(async () => { if (!(await request())) await openSettings(); }, [request, openSettings]);
   return { granted, refresh, request, allow, openSettings, restart };
 }
-export function MeetingAudioPermissionNotice({ source }: { source: RecordingSource }) {
+
+// The sources come from Settings, not a per-recording picker: `preferred` is what the user
+// asked for, `source` is what will actually record given the current macOS permission.
+export function useRecordingSource() {
+  const { settings } = useGlobalSettings();
+  const meetingAudio = useMeetingAudioPermission();
+  const preferred = preferredRecordingSource(settings, isMac);
+  return { preferred, source: effectiveRecordingSource(preferred, meetingAudio.granted), meetingAudio };
+}
+
+export function MeetingAudioPermissionNotice({ preferred }: { preferred: RecordingSource }) {
   const { granted, allow, restart } = useMeetingAudioPermission();
-  if (!needsMeetingAudio(source) || granted !== false) return null;
+  if (preferred === 'microphone' || granted !== false) return null;
   return <Alert status="info" variant="subtle" borderRadius="md" fontSize="xs" py={2} px={3} mt={2} flexDirection="column" alignItems="flex-start" gap={1.5}>
-    <AlertDescription>Meeting audio needs a one-time macOS permission. Allow Platypus under <b>Screen &amp; System Audio Recording</b>, then restart Platypus. Nothing on screen is recorded. Microphone-only recording works now.</AlertDescription>
+    <AlertDescription>Recording the microphone only until macOS lets Platypus hear meeting audio. Allow Platypus under <b>Screen &amp; System Audio Recording</b>, then restart Platypus. Nothing on screen is recorded.</AlertDescription>
     <HStack spacing={2}>
       <Button size="xs" colorScheme="teal" onClick={allow}>Allow meeting audio</Button>
       <Button size="xs" variant="ghost" onClick={restart}>Restart Platypus</Button>
     </HStack>
   </Alert>;
+}
+
+export function RecordingSourceCaption({ source }: { source: RecordingSource }) {
+  if (!isMac) return null;
+  return <Text fontSize="xs" color="gray.500" textAlign="center" mt={1}>{recordingSourceNames[source]} · change in Settings</Text>;
 }
 
 type CaptureStatus = { recording_id: string; recording: boolean; microphone: string; meeting_audio: string; microphone_level: number; meeting_level: number; warning: string | null };

@@ -1,5 +1,6 @@
 import { useRecordingOwner } from "../../../components/RecordingRecovery";
-import { RecordingSourcePicker, RecordingMeters, MeetingAudioPermissionNotice, useMeetingAudioPermission, needsMeetingAudio, defaultRecordingSource, type RecordingSource } from "../../../components/RecordingControls";
+import { RecordingMeters, MeetingAudioPermissionNotice, useRecordingSource, recordingSourceNames } from "../../../components/RecordingControls";
+import { effectiveRecordingSource } from "../../../components/recordingSource";
 import { TranscriptExtension } from "./TranscriptExtension";
 import { MeetingSourcesModal } from "./MeetingSourcesModal";
 import { extractMeetingSources, transcriptNode, transcriptHtml, type MeetingSources, type TranscriptSegment } from "../meetingSources";
@@ -85,7 +86,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [podcastResult, setPodcastResult] = useState<PodcastResult | null>(null);
   const [isPodcastPlayerOpen, setIsPodcastPlayerOpen] = useState(false);
   const [isPodcastJobRunning, setIsPodcastJobRunning] = useState(false);
-  const [recordingSource, setRecordingSource] = useState<RecordingSource>(defaultRecordingSource);
+  const { source: recordingSource, preferred: preferredRecordingSource, meetingAudio } = useRecordingSource();
   const recordingIdRef = useRef<string | null>(null);
   const recordingLocalRef = useRef(true);
   // Voice recording state
@@ -109,7 +110,6 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
-  const meetingAudio = useMeetingAudioPermission();
   const notify = useNotify();
   const presentations = usePresentations();
   const { settings } = useGlobalSettings();
@@ -323,13 +323,6 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       return;
     }
 
-    if (needsMeetingAudio(recordingSource) && !(await meetingAudio.refresh())) {
-      // Surfaces the system prompt on first use; otherwise the inline notice explains the fix.
-      await meetingAudio.request();
-      toast({ title: "Meeting audio isn't allowed yet", description: "Allow Platypus under Screen & System Audio Recording and restart, or switch to Microphone only.", status: "warning", duration: 6000, isClosable: true, position: "bottom-right" });
-      return;
-    }
-
     recordingDocumentRef.current = documentId;
     setIsPreparingRecording(true);
 
@@ -357,7 +350,9 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       setRecordingTime(0);
       setLiveTranscript(null);
 
-      const result = await invoke<string>('start_audio_recording', { useLocal, noteId: recordingDocumentRef.current, source: recordingSource });
+      // Re-check the permission at the moment of recording so a fresh grant is honoured.
+      const source = effectiveRecordingSource(preferredRecordingSource, await meetingAudio.refresh());
+      const result = await invoke<string>('start_audio_recording', { useLocal, noteId: recordingDocumentRef.current, source });
       recordingIdRef.current = result;
       recordingLocalRef.current = useLocal;
       if (!useLocal) {
@@ -769,7 +764,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
             
             <Flex alignItems="center" gap={2}>
               {/* Voice record into note */}
-              <Tooltip label={isPreparingRecording ? "Preparing..." : isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Record into this note"}>
+              <Tooltip label={isPreparingRecording ? "Preparing..." : isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : `Record into this note (${recordingSourceNames[recordingSource]})`}>
                 <IconButton
                   aria-label={isRecording ? "Stop recording" : "Record voice note"}
                   icon={isPreparingRecording || isTranscribing ? <Spinner size="xs" /> : isRecording ? <Square size={16} /> : <Mic size={16} />}
@@ -780,7 +775,6 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   isDisabled={isPreparingRecording || isProcessingRecording || isTranscribing || isCleaningUp || isSummarizing}
                 />
               </Tooltip>
-              <RecordingSourcePicker value={recordingSource} onChange={setRecordingSource} disabled={isRecording || isPreparingRecording || isProcessingRecording || isTranscribing} />
 
               {/* Clean up or organize note */}
               <Tooltip label={hasMeetingTranscript ? "Organize meeting notes" : "Clean up note"}>
@@ -1055,7 +1049,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 )}
               </Flex>
               {isRecording && <RecordingMeters recordingId={recordingIdRef.current} source={recordingSource} />}
-              {!isRecording && <MeetingAudioPermissionNotice source={recordingSource} />}
+              {!isRecording && <MeetingAudioPermissionNotice preferred={preferredRecordingSource} />}
               {recordingLocalRef.current && isRecording && (
                 <LiveTranscriptPreview update={liveTranscript} />
               )}

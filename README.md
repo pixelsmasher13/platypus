@@ -37,7 +37,7 @@ Data stays on disk in SQLite. In local transcription mode, audio never leaves yo
 
 **Notices your meetings.** When a Zoom or Teams call starts, Platypus offers to record it — no calendar hookup, no meeting bot.
 
-**Records both sides of the call.** Your microphone and your computer's audio are captured together, so remote voices come through even on headphones. For in-person meetings, record the mic alone. (Meeting audio needs macOS 13+; Windows records the mic.)
+**Records both sides of the call.** Your microphone and your computer's audio are captured together, so remote voices come through even on headphones. Turn either source off in Settings for in-person meetings or webinars. (Meeting audio needs macOS 13+; Windows records the mic.)
 
 **Transcribes on your machine.** Local Whisper shows live drafts as people talk, then swaps in a more accurate pass at each pause. It works offline after a one-time model download, and audio is deleted after transcription unless you choose to keep it. Prefer the cloud? Switch to OpenAI's API in Settings.
 
