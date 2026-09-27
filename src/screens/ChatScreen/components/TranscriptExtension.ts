@@ -1,9 +1,11 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { TranscriptView } from './TranscriptView';
+import { SpeakerTurnExtension } from './SpeakerTurnExtension';
 
 export const TranscriptExtension = Node.create({
   name: 'transcript',
+  addExtensions: () => [SpeakerTurnExtension],
   addOptions: () => ({ getNoteId: (): number | undefined => undefined }),
   addAttributes: () => ({ recordingId: {
     default: null,

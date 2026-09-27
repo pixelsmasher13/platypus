@@ -2,7 +2,15 @@
 //! words may be intentional. Each captured sample belongs to at most one chunk.
 use std::collections::VecDeque;
 
+#[derive(Debug, PartialEq)]
+pub struct TimedChunk {
+    pub start_sample: u64,
+    pub samples: Vec<f32>,
+}
+
 pub struct SpeechChunker {
+    cursor: u64,
+    utterance_start: u64,
     frame_size: usize,
     pre_roll_size: usize,
     silence_frames: usize,
@@ -20,6 +28,8 @@ pub struct SpeechChunker {
 impl SpeechChunker {
     pub fn new(sample_rate: u32) -> Self {
         Self {
+            cursor: 0,
+            utterance_start: 0,
             frame_size: (sample_rate as usize / 50).max(1), // 20 ms
             pre_roll_size: sample_rate as usize / 5,        // 200 ms to protect consonants
             silence_frames: 35, // end an utterance after 700 ms of quiet
@@ -36,6 +46,10 @@ impl SpeechChunker {
     }
 
     pub fn push(&mut self, samples: &[f32]) -> Vec<Vec<f32>> {
+        self.push_timed(samples).into_iter().map(|chunk| chunk.samples).collect()
+    }
+
+    pub fn push_timed(&mut self, samples: &[f32]) -> Vec<TimedChunk> {
         self.remainder
             .extend(samples.iter().map(|s| if s.is_finite() { *s } else { 0.0 }));
         let complete = self.remainder.len() / self.frame_size * self.frame_size;
@@ -49,7 +63,9 @@ impl SpeechChunker {
         chunks
     }
 
-    fn frame(&mut self, frame: &[f32]) -> Option<Vec<f32>> {
+    fn frame(&mut self, frame: &[f32]) -> Option<TimedChunk> {
+        let frame_start = self.cursor;
+        self.cursor += frame.len() as u64;
         // Conservative near-silence gate, NOT a speech classifier. Remove DC
         // from the measurement so an idle microphone offset isn't called speech.
         let mean = frame.iter().sum::<f32>() / frame.len() as f32;
@@ -64,6 +80,7 @@ impl SpeechChunker {
             return None;
         }
         if self.utterance.is_empty() {
+            self.utterance_start = frame_start.saturating_sub(self.pre_roll.len() as u64);
             self.utterance.extend(self.pre_roll.drain(..));
         }
         self.utterance.extend_from_slice(frame);
@@ -80,7 +97,7 @@ impl SpeechChunker {
         None
     }
 
-    fn take_utterance(&mut self) -> Option<Vec<f32>> {
+    fn take_utterance(&mut self) -> Option<TimedChunk> {
         let mut chunk = std::mem::take(&mut self.utterance);
         chunk.truncate((self.last_active_end + self.pre_roll_size).min(chunk.len()));
         let has_signal = self.active_frames >= 3; // reject isolated clicks, keep short words
@@ -89,7 +106,7 @@ impl SpeechChunker {
         self.last_active_end = 0;
         self.last_preview_end = 0;
         if has_signal {
-            Some(chunk)
+            Some(TimedChunk { start_sample: self.utterance_start, samples: chunk })
         } else {
             None
         }
@@ -98,6 +115,10 @@ impl SpeechChunker {
     /// A revisable snapshot; never drains or changes the final audio boundaries.
     /// Require fresh speech so idle microphones don't repeatedly decode silence.
     pub fn take_preview(&mut self) -> Option<Vec<f32>> {
+        self.take_timed_preview().map(|chunk| chunk.samples)
+    }
+
+    pub fn take_timed_preview(&mut self) -> Option<TimedChunk> {
         if self.active_frames < 3
             || self.last_active_end.saturating_sub(self.last_preview_end) < self.preview_interval
         {
@@ -105,11 +126,15 @@ impl SpeechChunker {
         }
         self.last_preview_end = self.last_active_end;
         let end = (self.last_active_end + self.pre_roll_size).min(self.utterance.len());
-        Some(self.utterance[..end].to_vec())
+        Some(TimedChunk { start_sample: self.utterance_start, samples: self.utterance[..end].to_vec() })
     }
 
     /// Flush the user's final words even when Stop arrives before a pause.
     pub fn finish(&mut self) -> Vec<Vec<f32>> {
+        self.finish_timed().into_iter().map(|chunk| chunk.samples).collect()
+    }
+
+    pub fn finish_timed(&mut self) -> Vec<TimedChunk> {
         let mut chunks = Vec::new();
         let remainder = std::mem::take(&mut self.remainder);
         if !remainder.is_empty() {

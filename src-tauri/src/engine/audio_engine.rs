@@ -16,7 +16,7 @@ use std::{
 pub static IS_RECORDING: AtomicBool = AtomicBool::new(false);
 pub static LOCAL_CAPTURE_RUNNING: AtomicBool = AtomicBool::new(false);
 pub static DEVICE_SAMPLE_RATE: AtomicU32 = AtomicU32::new(RATE);
-static AUDIO_BUFFER: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+static AUDIO_BUFFER: Mutex<Vec<[f32; 2]>> = Mutex::new(Vec::new());
 static RECORDING_THREAD: Mutex<Option<std::thread::JoinHandle<Result<String, String>>>> =
     Mutex::new(None);
 static STATUS: once_cell::sync::Lazy<Mutex<CaptureStatus>> =
@@ -41,6 +41,9 @@ pub fn capture_status() -> CaptureStatus {
     status
 }
 pub fn take_new_samples() -> Vec<f32> {
+    take_new_source_frames().into_iter().map(|frame| (frame[0] + frame[1]).clamp(-1.0, 1.0)).collect()
+}
+pub fn take_new_source_frames() -> Vec<[f32; 2]> {
     std::mem::take(&mut *AUDIO_BUFFER.lock().unwrap())
 }
 pub fn read_audio_file(path: &str) -> Result<Vec<u8>, String> {
@@ -436,9 +439,9 @@ fn capture(
                     - (RATE as usize * 2 / 5)
             };
             let frames = timeline.drain_until(end);
-            let mixed = writer.write(&frames)?;
+            writer.write(&frames)?;
             if local {
-                AUDIO_BUFFER.lock().unwrap().extend(mixed);
+                AUDIO_BUFFER.lock().unwrap().extend(frames);
             }
             if flush_at.elapsed() >= Duration::from_secs(1) {
                 writer.flush()?;

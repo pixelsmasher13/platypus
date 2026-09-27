@@ -2,7 +2,7 @@ import { useRecordingOwner } from "../../../components/RecordingRecovery";
 import { RecordingSourcePicker, RecordingMeters, defaultRecordingSource, type RecordingSource } from "../../../components/RecordingControls";
 import { TranscriptExtension } from "./TranscriptExtension";
 import { MeetingSourcesModal } from "./MeetingSourcesModal";
-import { extractMeetingSources, transcriptNode, transcriptHtml, type MeetingSources } from "../meetingSources";
+import { extractMeetingSources, transcriptNode, transcriptHtml, type MeetingSources, type TranscriptSegment } from "../meetingSources";
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "./LiveTranscriptPreview";
 import { getConfiguredModel } from "../../../models/models";
 import { type FC, useState, useEffect, useRef, useCallback } from "react";
@@ -381,6 +381,8 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
   const stopNoteRecording = async () => {
     const useLocal = recordingLocalRef.current;
+    const recordingId = recordingIdRef.current;
+    const recordedDocumentId = recordingDocumentRef.current;
 
     setIsRecording(false);
     setIsProcessingRecording(true);
@@ -398,7 +400,6 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
       if (useLocal) {
         transcription = await invoke<string>('stop_audio_recording', { useLocal: true });
-        setIsProcessingRecording(false);
       } else {
         const filePath = await invoke<string>('stop_audio_recording', { useLocal: false });
         setRecordingFilePath(filePath);
@@ -408,15 +409,19 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
         transcription = await invoke<string>('transcribe_audio', { filePath });
       }
 
+      const segments = recordingId
+        ? await invoke<TranscriptSegment[]>('recording_transcript_segments', { id: recordingId }).catch(() => [])
+        : [];
+
       if (editor && transcription.trim()) {
-        if (recordingDocumentRef.current !== documentIdRef.current) {
+        if (recordedDocumentId !== documentIdRef.current) {
           // Keep a recording on its source note if navigation occurred during capture.
-          await invoke('append_project_activity_text', { activityId: recordingDocumentRef.current, text: transcriptHtml(transcription, recordingIdRef.current) + '<p></p>' });
-          invoke('vectorize_document_chunks', { documentId: recordingDocumentRef.current }).catch(() => {});
+          await invoke('append_project_activity_text', { activityId: recordedDocumentId, text: transcriptHtml(transcription, recordingId, segments) + '<p></p>' });
+          invoke('vectorize_document_chunks', { documentId: recordedDocumentId }).catch(() => {});
           toast({ title: "Transcript saved to the recorded note", status: "success" });
           return;
         }
-        editor.commands.insertContentAt(editor.state.doc.content.size, [transcriptNode(transcription, recordingIdRef.current), { type: 'paragraph' }]);
+        editor.commands.insertContentAt(editor.state.doc.content.size, [transcriptNode(transcription, recordingId, segments), { type: 'paragraph' }]);
 
         // Trigger auto-save
         latestContentRef.current = editor.getHTML();
@@ -962,6 +967,9 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 maxWidth: "none",
                 px: 3,
               },
+              '.ProseMirror [data-transcript-turn]': { mb: 4, '&:last-child': { mb: 0 } },
+              '.ProseMirror [data-turn-heading]': { fontSize: 'xs', color: 'gray.500', mb: 1, userSelect: 'none' },
+              '.ProseMirror [data-turn-time]': { ml: 2, fontWeight: 'normal', color: 'gray.400' },
               '.ProseMirror section[data-transcript]': {
                 borderLeft: '3px solid', borderColor: 'teal.200', bg: 'gray.50',
                 p: 4, my: 4, maxH: '320px', overflowY: 'auto',

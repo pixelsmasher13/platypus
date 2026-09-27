@@ -5,6 +5,7 @@ pub mod presentation_library;
 pub mod models;
 pub mod chatgpt;
 pub mod transcription_audio;
+pub mod source_transcription;
 pub mod transcription_context;
 pub mod recording_audio;
 #[path = "engine/audio_processor.rs"]

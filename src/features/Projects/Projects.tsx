@@ -1,6 +1,6 @@
 import { RecordingRecovery, useRecordingOwner } from "../../components/RecordingRecovery";
 import { RecordingSourcePicker, RecordingMeters, defaultRecordingSource, type RecordingSource } from "../../components/RecordingControls";
-import { transcriptHtml } from "../../screens/ChatScreen/meetingSources";
+import { transcriptHtml, type TranscriptSegment } from "../../screens/ChatScreen/meetingSources";
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
 import { type FC, useState, useMemo, useRef, useEffect } from "react";
 import styled from "styled-components";
@@ -573,6 +573,7 @@ const ProjectSelector: FC<{
   // Stop voice recording and auto-transcribe
   const stopRecording = async () => {
     const useLocal = recordingLocalRef.current;
+    const recordingId = recordingIdRef.current;
 
     try {
       setIsProcessingRecording(true);
@@ -610,6 +611,10 @@ const ProjectSelector: FC<{
         transcription = await invoke<string>('transcribe_audio', { filePath });
       }
 
+      const segments = recordingId
+        ? await invoke<TranscriptSegment[]>('recording_transcript_segments', { id: recordingId }).catch(() => [])
+        : [];
+
       // Create a new activity with the transcription
       let newActivityId;
       if (selectedProject) {
@@ -619,7 +624,7 @@ const ProjectSelector: FC<{
       }
 
       if (newActivityId) {
-        if (recordingIdRef.current) await invoke('attach_recording', { id: recordingIdRef.current, noteId: newActivityId });
+        if (recordingId) await invoke('attach_recording', { id: recordingId, noteId: newActivityId });
         const date = new Date();
         const documentName = `Voice Note ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 
@@ -630,7 +635,7 @@ const ProjectSelector: FC<{
         });
         await invoke("update_project_activity_text", {
           activityId: newActivityId,
-          text: transcriptHtml(transcription, recordingIdRef.current) + '<p></p>',
+          text: transcriptHtml(transcription, recordingId, segments) + '<p></p>',
         });
 
         // Refresh state so sidebar shows the correct name

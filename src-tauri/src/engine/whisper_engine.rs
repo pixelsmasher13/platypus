@@ -3,7 +3,8 @@ use log::info;
 use std::path::PathBuf;
 use std::sync::Once;
 use whisper_rs::{
-    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadParams,
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadContext,
+    WhisperVadContextParams, WhisperVadParams,
 };
 
 struct WhisperModelInfo {
@@ -178,7 +179,7 @@ impl WhisperEngine {
     }
 
     pub fn transcribe_with_context(&self, samples_16k: &[f32], prompt: &str) -> Result<String> {
-        self.decode(samples_16k, false, None, prompt)
+        self.decode(samples_16k, false, None, prompt, false)
     }
 
     /// Fast, replaceable preview on the same model. Stop can interrupt this
@@ -193,7 +194,23 @@ impl WhisperEngine {
         cancel: fn() -> bool,
         prompt: &str,
     ) -> Result<String> {
-        self.decode(samples_16k, true, Some(cancel), prompt)
+        self.decode(samples_16k, true, Some(cancel), prompt, false)
+    }
+
+    /// Already separated sources have clean pauses. Use VAD only to reject
+    /// speech-free chunks, retaining all samples in chunks that contain speech.
+    /// Trimming them a second time can remove words at a source-turn boundary.
+    pub fn transcribe_source_with_context(&self, samples: &[f32], prompt: &str) -> Result<String> {
+        self.decode(samples, false, None, prompt, true)
+    }
+
+    pub fn transcribe_source_preview(
+        &self,
+        samples: &[f32],
+        cancel: fn() -> bool,
+        prompt: &str,
+    ) -> Result<String> {
+        self.decode(samples, true, Some(cancel), prompt, true)
     }
 
     fn decode(
@@ -202,6 +219,7 @@ impl WhisperEngine {
         draft: bool,
         cancel: Option<fn() -> bool>,
         prompt: &str,
+        separate_source: bool,
     ) -> Result<String> {
         // Never let text hints make a completely silent buffer look like speech.
         // Normal capture also applies the speech chunker's near-silence gate.
@@ -275,9 +293,23 @@ impl WhisperEngine {
             vad.set_min_silence_duration(700);
             vad.set_speech_pad(200);
             vad.set_samples_overlap(0.0);
-            params.set_vad_model_path(vad_path.to_str());
-            params.set_vad_params(vad);
-            params.enable_vad(true);
+            if separate_source {
+                // On a detector error, preserve speech by decoding the full chunk.
+                let detected = WhisperVadContext::new(
+                    vad_path.to_str().unwrap_or(""),
+                    WhisperVadContextParams::new(),
+                )
+                .and_then(|mut detector| detector.segments_from_samples(vad, samples_16k));
+                match detected {
+                    Ok(segments) if segments.num_segments() == 0 => return Ok(String::new()),
+                    Err(error) => log::warn!("Source speech detection unavailable: {:?}", error),
+                    _ => {}
+                }
+            } else {
+                params.set_vad_model_path(vad_path.to_str());
+                params.set_vad_params(vad);
+                params.enable_vad(true);
+            }
         }
 
         state

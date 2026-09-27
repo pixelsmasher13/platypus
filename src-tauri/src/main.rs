@@ -186,6 +186,7 @@ async fn main() {
             get_audio_capture_status,
             list_recordings,
             list_recording_transcripts,
+            recording_transcript_segments,
             attach_recording,
             recording_audio_path,
             export_recording,
@@ -990,12 +991,16 @@ fn get_transcript() -> String {
 }
 
 /// Decode one complete utterance, without text post-processing or phrase removal.
-fn process_and_transcribe_chunk(raw_samples: &[f32], device_rate: u32, draft: bool, prompt: &str) -> Result<String, String> {
+fn process_and_transcribe_chunk(raw_samples: &[f32], device_rate: u32, draft: bool, prompt: &str, separate_source: bool) -> Result<String, String> {
     let samples_16k = crate::engine::audio_processor::resample(raw_samples, device_rate, 16000)
         .map_err(|e| format!("Audio resampling failed: {}", e))?;
     let guard = WHISPER_ENGINE.lock().unwrap();
     let engine = guard.as_ref().ok_or_else(|| "Whisper engine not initialized".to_string())?;
-    let result = if draft {
+    let result = if separate_source && draft {
+        engine.transcribe_source_preview(&samples_16k, || !crate::engine::audio_engine::IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst), prompt)
+    } else if separate_source {
+        engine.transcribe_source_with_context(&samples_16k, prompt)
+    } else if draft {
         engine.transcribe_preview_with_context(&samples_16k, || !crate::engine::audio_engine::IS_RECORDING.load(std::sync::atomic::Ordering::SeqCst), prompt)
     } else {
         engine.transcribe_with_context(&samples_16k, prompt)
@@ -1009,6 +1014,9 @@ async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, St
     use std::sync::atomic::Ordering;
     use platypus_notes::transcription_audio::{SpeechChunker, LiveTranscript};
 
+    if crate::engine::audio_engine::capture_status().source == "both" {
+        return realtime_source_transcription_loop(app_handle).await;
+    }
     let device_rate = DEVICE_SAMPLE_RATE.load(Ordering::SeqCst);
     let mut chunker = SpeechChunker::new(device_rate);
     let mut transcript = LiveTranscript::default();
@@ -1021,7 +1029,7 @@ async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, St
         if finished { chunks.extend(chunker.finish()); }
         for chunk in chunks {
             let prompt = platypus_notes::transcription_context::transcription_prompt("", transcript.committed());
-            let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&chunk, device_rate, false, &prompt)).await;
+            let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&chunk, device_rate, false, &prompt, false)).await;
             let text = match result {
                 Ok(Ok(text)) => text,
                 error => {
@@ -1041,7 +1049,7 @@ async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, St
         if IS_RECORDING.load(Ordering::SeqCst) && last_preview.elapsed() >= std::time::Duration::from_secs(2) {
             if let Some(audio) = chunker.take_preview() {
                 let prompt = platypus_notes::transcription_context::transcription_prompt("", transcript.committed());
-                let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&audio, device_rate, true, &prompt)).await;
+                let result = tokio::task::spawn_blocking(move || process_and_transcribe_chunk(&audio, device_rate, true, &prompt, false)).await;
                 last_preview = std::time::Instant::now();
                 if IS_RECORDING.load(Ordering::SeqCst) {
                     match result {
@@ -1058,6 +1066,67 @@ async fn realtime_transcription_loop(app_handle: AppHandle) -> Result<String, St
         }
     }
     Ok(transcript.committed().to_string())
+}
+
+// The same model decodes each channel serially, keeping memory bounded and
+// finalized speech ahead of previews. Context never crosses between channels.
+async fn realtime_source_transcription_loop(app_handle: AppHandle) -> Result<String, String> {
+    use crate::engine::audio_engine::{LOCAL_CAPTURE_RUNNING, IS_RECORDING, DEVICE_SAMPLE_RATE, take_new_source_frames};
+    use platypus_notes::source_transcription::{SourceChunker, SourceTranscript};
+    use std::sync::atomic::Ordering;
+    let rate = DEVICE_SAMPLE_RATE.load(Ordering::SeqCst);
+    let id = crate::engine::audio_engine::capture_status().recording_id;
+    let root = recording_root(&app_handle)?;
+    let mut chunker = SourceChunker::new(rate);
+    let mut transcript = SourceTranscript::default();
+    let mut last_preview = std::time::Instant::now();
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let finished = !LOCAL_CAPTURE_RUNNING.load(Ordering::SeqCst);
+        let mut chunks = chunker.push(&take_new_source_frames());
+        if finished { chunks.extend(chunker.finish()); }
+        let had_final_chunks = !chunks.is_empty();
+        for chunk in chunks {
+            let prompt = transcript.context(chunk.source);
+            let result = tokio::task::spawn_blocking(move || {
+                let result = process_and_transcribe_chunk(&chunk.audio.samples, rate, false, &prompt, true);
+                (chunk, result)
+            }).await;
+            match result {
+                Ok((chunk, Ok(text))) => transcript.commit(&chunk, rate, &text),
+                error => {
+                    IS_RECORDING.store(false, Ordering::SeqCst);
+                    return Err(format!("Transcription stopped: {:?}", error.map(|(_, result)| result)));
+                }
+            }
+            let text = transcript.text();
+            *ACCUMULATED_TRANSCRIPT.lock().unwrap() = text;
+            if let Some(w) = app_handle.get_window("main") { let _ = w.emit("transcript-update", transcript.update(false)); }
+        }
+        if finished { break; }
+        // If inference was busy, immediately drain queued final audio next.
+        if !had_final_chunks && IS_RECORDING.load(Ordering::SeqCst) && last_preview.elapsed() >= std::time::Duration::from_secs(2) {
+            if let Some(chunk) = chunker.preview() {
+                let prompt = transcript.context(chunk.source);
+                let result = tokio::task::spawn_blocking(move || {
+                    let result = process_and_transcribe_chunk(&chunk.audio.samples, rate, true, &prompt, true);
+                    (chunk, result)
+                }).await;
+                last_preview = std::time::Instant::now();
+                if IS_RECORDING.load(Ordering::SeqCst) {
+                    match result {
+                        Ok((chunk, Ok(text))) => {
+                            transcript.revise(&chunk, rate, &text);
+                            if let Some(w) = app_handle.get_window("main") { let _ = w.emit("transcript-update", transcript.update(false)); }
+                        }
+                        _ => log::warn!("Live source draft unavailable; final transcription will continue"),
+                    }
+                }
+            }
+        }
+    }
+    platypus_notes::recording_audio::save_transcript_segments(&root, &id, &transcript.segments)?;
+    Ok(transcript.text())
 }
 
 // Document import commands

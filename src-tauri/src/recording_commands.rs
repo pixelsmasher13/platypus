@@ -70,6 +70,10 @@ pub fn list_recording_transcripts(
     Ok(versions)
 }
 #[tauri::command]
+pub fn recording_transcript_segments(app_handle: AppHandle, id: String) -> Result<Vec<platypus_notes::source_transcription::TranscriptSegment>, String> {
+    recording_audio::transcript_segments(&recording_root(&app_handle)?, &id)
+}
+#[tauri::command]
 pub fn attach_recording(app_handle: AppHandle, id: String, note_id: i64) -> Result<(), String> {
     let root = recording_root(&app_handle)?;
     let mut recording = recording_audio::load(&root, &id)?;
@@ -133,15 +137,25 @@ pub async fn retranscribe_recording(app_handle: AppHandle, id: String) -> Result
     if recording.status == "failed" {
         return Err("This recording did not capture any audio.".into());
     }
-    let path = recording_audio::directory(&root, &id)?.join("audio.wav");
+    let dir = recording_audio::directory(&root, &id)?;
+    let source_path = dir.join("sources.wav");
+    let separate = recording.source == "both" && source_path.is_file();
+    let path = if separate { source_path } else { dir.join("audio.wav") };
     let model = crate::get_whisper_model_id(&app_handle);
     let selected_model = model.clone();
     // No live inference can be running while the session lock is held. Release
     // the previous model before loading a comparison model (several GB each).
     *crate::WHISPER_ENGINE.lock().unwrap() = None;
-    let text = tokio::task::spawn_blocking(move || {
+    let (text, segments) = tokio::task::spawn_blocking(move || {
         let engine = crate::engine::whisper_engine::WhisperEngine::load(&selected_model)
             .map_err(|e| e.to_string())?;
+        if separate {
+            let transcript = platypus_notes::source_transcription::transcribe_source_wav(&path, |chunk, rate, prompt| {
+                let samples = platypus_notes::audio_processor::resample(chunk, rate, 16000).map_err(|e| e.to_string())?;
+                engine.transcribe_source_with_context(&samples, prompt).map_err(|e| e.to_string())
+            })?;
+            return Ok((transcript.text(), transcript.segments));
+        }
         let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
         let rate = reader.spec().sample_rate;
         let mut transcript = platypus_notes::transcription_audio::LiveTranscript::default();
@@ -167,12 +181,12 @@ pub async fn retranscribe_recording(app_handle: AppHandle, id: String) -> Result
         for chunk in chunker.push(&buffer).into_iter().chain(chunker.finish()) {
             transcribe(&chunk)?;
         }
-        Ok::<String, String>(transcript.committed().to_string())
+        Ok::<_, String>((transcript.committed().to_string(), Vec::new()))
     })
     .await
     .map_err(|e| e.to_string())??;
     // Preserve the original transcript alongside a separately named comparison.
-    let comparison = serde_json::json!({ "model": model, "created_at": chrono::Utc::now().to_rfc3339(), "text": text, "contextual": true });
+    let comparison = serde_json::json!({ "model": model, "created_at": chrono::Utc::now().to_rfc3339(), "text": text, "contextual": true, "segments": segments });
     let dir = recording_audio::directory(&root, &id)?;
     std::fs::write(
         dir.join(format!(
@@ -182,6 +196,9 @@ pub async fn retranscribe_recording(app_handle: AppHandle, id: String) -> Result
         serde_json::to_vec_pretty(&comparison).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    if recording.transcript.as_deref().unwrap_or("").trim().is_empty() && !segments.is_empty() {
+        recording_audio::save_transcript_segments(&root, &id, &segments)?;
+    }
     recording_audio::finish_transcription(&root, &id, &text)?;
     Ok(text)
 }

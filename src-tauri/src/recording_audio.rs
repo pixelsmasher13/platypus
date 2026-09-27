@@ -192,6 +192,21 @@ pub fn load(root: &Path, id: &str) -> Result<SavedRecording, String> {
     )
     .map_err(|e| e.to_string())
 }
+// A sidecar survives optional audio deletion and does not change legacy metadata.
+pub fn save_transcript_segments(root: &Path, id: &str, segments: &[crate::source_transcription::TranscriptSegment]) -> Result<(), String> {
+    let dir = directory(root, id)?;
+    let mut file = tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())?;
+    serde_json::to_writer_pretty(&mut file, segments).map_err(|e| e.to_string())?;
+    file.as_file().sync_all().map_err(|e| e.to_string())?;
+    file.persist(dir.join("source-transcript.json")).map_err(|e| e.to_string())?;
+    Ok(())
+}
+pub fn transcript_segments(root: &Path, id: &str) -> Result<Vec<crate::source_transcription::TranscriptSegment>, String> {
+    let path = directory(root, id)?.join("source-transcript.json");
+    if !path.exists() { return Ok(Vec::new()); }
+    serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+}
+
 pub fn list(root: &Path, note_id: Option<i64>) -> Result<Vec<SavedRecording>, String> {
     if !root.exists() {
         return Ok(Vec::new());
@@ -296,7 +311,12 @@ mod tests {
             std::fs::write(dir.join("recording.json"), serde_json::to_vec(&metadata).unwrap()).unwrap();
             for name in ["audio.wav", "sources.wav"] { std::fs::write(dir.join(name), b"audio").unwrap(); }
             std::fs::write(dir.join("transcript-comparison.json"), b"comparison").unwrap();
+            let segments = vec![crate::source_transcription::TranscriptSegment {
+                source: crate::source_transcription::AudioSource::System, start_ms: 100, end_ms: 1000, text: text.into(),
+            }];
+            save_transcript_segments(root.path(), id, &segments).unwrap();
             finish_transcription(root.path(), id, text).unwrap();
+            assert_eq!(transcript_segments(root.path(), id).unwrap(), segments);
             assert_eq!(load(root.path(), id).unwrap().transcript.as_deref(), Some(text));
             assert_eq!(load(root.path(), id).unwrap().note_id, Some(42));
             for name in ["audio.wav", "sources.wav"] { assert_eq!(dir.join(name).exists(), should_keep); }

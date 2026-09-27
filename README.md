@@ -33,30 +33,17 @@ Data stays on disk in SQLite. In local transcription mode, audio never leaves yo
 | Free                         | ✅          | partial | partial    | ❌       |
 | Native desktop               | ✅          | ✅      | ❌         | ❌       |
 
-## Voice transcription
+## Meetings and transcription
 
-**Recording** captures your microphone and the meeting audio together (macOS 13+), or either one alone from the arrow beside **Record**.
+**Notices your meetings.** When a Zoom or Teams call starts, Platypus offers to record it — no calendar hookup, no meeting bot.
 
-- Meeting audio comes straight from your Mac via ScreenCaptureKit, even with headphones — no meeting bot, no video
-- Audio isn't kept unless you turn on **Settings → Keep recordings** for playback and model comparisons; failed transcriptions keep their audio so you can retry
-- Use headphones when capturing both: echo cancellation isn't implemented yet
-- Needs macOS's Screen & System Audio Recording permission; Windows records the microphone only
+**Records both sides of the call.** Your microphone and your computer's audio are captured together, so remote voices come through even on headphones. For in-person meetings, record the mic alone. (Meeting audio needs macOS 13+; Windows records the mic.)
+
+**Transcribes on your machine.** Local Whisper shows live drafts as people talk, then swaps in a more accurate pass at each pause. It works offline after a one-time model download, and audio is deleted after transcription unless you choose to keep it. Prefer the cloud? Switch to OpenAI's API in Settings.
+
+**Know which side spoke.** Local mic + meeting transcription labels your microphone as **You** and system audio as **Remote participants**, with timestamps and editable labels. Everyone on each audio source shares its label; this does not identify individual remote speakers. Labels stay with the transcript even when audio is deleted.
 
 More in [how meeting audio capture works](docs/meeting-audio.md).
-
-Transcription runs in one of two modes, switchable in Settings.
-
-**Local Whisper (default)** — on-device transcription via whisper.cpp.
-
-- Real-time: live drafts appear as you speak, replaced by a more accurate pass at each pause (only the final pass is saved)
-- Model downloads on first use; after that it works offline, no API key required
-- Hardware-accelerated via Metal on macOS, CPU fallback elsewhere
-- Models (selectable in Settings): Large v3 (~3.1GB, default, best quality), Large v3 Turbo (~1.6GB), Distil Large v3.5 (~1.5GB, fastest)
-
-**OpenAI API** — records WAV, uploads to OpenAI's Whisper endpoint.
-
-- Requires an OpenAI API key
-- Transcribes after recording finishes (not real-time)
 
 ## Slide decks
 
@@ -136,7 +123,7 @@ For a signed + notarized macOS build that uploads to your S3 bucket, see [`scrip
 
 A few of the less-obvious decisions:
 
-- **Audio pipeline**: CPAL microphone and ScreenCaptureKit meeting audio → aligned and mixed on a common 48kHz timeline → near-silence gate that ends an utterance after 700ms of quiet (20s max) → rubato resample to 16kHz → whisper.cpp via [whisper-rs](https://github.com/tazz4843/whisper-rs), with Silero VAD when its model is installed. The gate only skips silence; it isn't a speech classifier, so quiet speech still reaches Whisper.
+- **Audio pipeline**: CPAL microphone and ScreenCaptureKit meeting audio → aligned on a common 48kHz timeline, with separate local transcription for each source → near-silence gate that ends an utterance after 700ms of quiet (20s max) → rubato resample to 16kHz → whisper.cpp via [whisper-rs](https://github.com/tazz4843/whisper-rs), with Silero VAD when its model is installed. The gate only skips silence; it isn't a speech classifier, so quiet speech still reaches Whisper.
 - **Transcription context**: each chunk is prompted with up to 16 words of recent finalized speech. Drafts, note titles, and vocabulary hints are never used as prompts; in testing, longer history and hints dropped real speech ([details](CONTRIBUTING.md#transcription-quality)).
 - **Meeting detection**: Zoom is detected by presence of the `CptHost` process; Teams by CPU usage on its `audio.mojom.AudioService` sub-process. No Zoom/Teams API access required.
 - **Vector search**: per-project HNSW indices ([hnswlib-rs](https://github.com/jean-pierreBoth/hnswlib-rs)); documents chunked and embedded on save when vectorization is enabled.

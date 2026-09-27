@@ -12,9 +12,17 @@ macOS system capture uses ScreenCaptureKit on macOS 13+. Only an audio stream ou
 
 macOS may call the permission **Screen Recording** or **Screen & System Audio Recording**, depending on OS version. A failed requested source fails startup with an actionable error; the recorder never silently substitutes microphone-only capture. Microphone-only remains usable on older macOS releases.
 
-The microphone uses its supported native sample rate and channel count, then downmixes to mono. System audio is downmixed to mono at 48 kHz. Timestamped packets go to a bounded worker queue, off the audio callbacks. A streaming sinc resampler aligns each source to a common 48 kHz timeline with a 400 ms buffer for callback timing. The saved source channels remain separate. The combined track reserves headroom when both sources are selected; single-source recording retains its level. The same combined audio feeds live Whisper drafts and final decoding. No noise suppression is applied to the direct digital feed.
+The microphone uses its supported native sample rate and channel count, then downmixes to mono. System audio is downmixed to mono at 48 kHz. Timestamped packets go to a bounded worker queue, off the audio callbacks. A streaming sinc resampler aligns each source to a common 48 kHz timeline with a 400 ms buffer for callback timing. The saved source channels remain separate. The combined track reserves headroom when both sources are selected; single-source recording retains its level. For local **Mic + meeting audio** sessions, Whisper decodes the two original channels separately; single-source sessions and cloud transcription keep the existing path. No noise suppression is applied to the direct digital feed.
 
 Microphone loss or native stream errors stop capture and preserve available audio. Missing meeting packets are shown separately from a connected, quiet stream. Large processing stalls/sleep interrupt the recording instead of allocating a long silent gap. Source changes are not automatically reconnected; stop/restart recording to adopt a changed microphone. Headphones avoid remote speech entering both the digital stream and the microphone. Acoustic echo cancellation and per-participant speaker identification are not implemented.
+
+## Basic speaker labels
+
+Local **Mic + meeting audio** transcripts show **You** (microphone) and **Remote participants** (system audio), with elapsed times. Each channel keeps its own chunk boundaries and short finalized-text context. The installed Silero detector skips speech-free source chunks without trimming speech inside accepted chunks; punctuation-only output creates no turn. One Whisper model decodes serially; final chunks take priority over speculative drafts. Turns are sorted by capture time, including when an overlapping reply finishes decoding first. Times mark utterance chunks, not precise word boundaries.
+
+Use **Edit labels** inside the transcript to rename either side. That updates all turns from the same source in that transcript, saves with the note, and can be undone. Edited labels are included when organizing notes or using the note as AI context. Labeling does not require retaining audio.
+
+This identifies audio sources, not individual voices. People in the same room share the microphone label; everyone on the call shares the remote label. System audio may include other apps. Headphones avoid duplicate speech caused by speaker audio entering the microphone. Existing plain transcripts are unchanged; retranscribing a retained two-channel recording creates a labeled comparison. Cloud transcription currently remains unlabeled.
 
 ## Saved files
 
@@ -25,6 +33,7 @@ recordings/<recording-id>/
   recording.json          # note association, source, model, duration, warnings, original transcript
   audio.wav               # mono 48 kHz / 16-bit playback and transcription mix
   sources.wav             # stereo 48 kHz / 16-bit: microphone left, meeting audio right
+  source-transcript.json  # local source turns and capture times, retained without audio
   transcript-<time>.json   # optional local retranscription comparisons
 ```
 

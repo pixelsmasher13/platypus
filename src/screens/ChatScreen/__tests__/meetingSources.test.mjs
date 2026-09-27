@@ -41,3 +41,22 @@ test('links audio to the exact transcript without adding metadata to meeting pro
   assert.deepEqual(extractMeetingSources(doc(transcript)), { notes: '', transcript: 'Actual words' });
   assert.equal(transcriptHtml('Actual words', '20260925-123'), '<section data-transcript="true" data-recording-id="20260925-123"><p>Actual words</p></section>');
 });
+
+test('source turns retain timing and edited labels in AI meeting inputs', () => {
+  const segments = [
+    { source: 'microphone', start_ms: 1200, end_ms: 4000, text: 'Can we ship Friday?' },
+    { source: 'system', start_ms: 3000, end_ms: 6000, text: 'Only if QA passes.\nNo commitment yet.' },
+  ];
+  const section = transcriptNode('fallback', '123-1', segments);
+  section.content[1].attrs.label = 'Alex';
+  assert.equal(section.content[0].attrs.startMs, 1200);
+  assert.equal(section.content[1].attrs.source, 'system');
+  assert.deepEqual(extractMeetingSources(doc(paragraph('Check launch risk'), section)), {
+    notes: 'Check launch risk', transcript: 'You: Can we ship Friday?\nAlex: Only if QA passes.\nNo commitment yet.',
+  });
+  const html = transcriptHtml('fallback', '123-1', segments);
+  assert.match(html, /data-source="microphone"/);
+  assert.match(html, /data-start-ms="3000"/);
+  assert.match(html, /<strong>Remote participants:<\/strong>/);
+  assert.doesNotMatch(html, /fallback/);
+});
