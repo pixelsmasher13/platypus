@@ -29,6 +29,7 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
+  MenuDivider,
   useToast,
   InputGroup,
   InputLeftElement,
@@ -825,7 +826,11 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   >
                     Podcast
                   </MenuItem>
-                  <MenuItem icon={<Presentation size={14} />} onClick={presentations.openLibrary}>Saved presentations</MenuItem>
+                  <MenuDivider />
+                  {/* The library lives here, next to where decks are made, rather than in the app header. */}
+                  <MenuItem icon={<Presentation size={14} />} onClick={presentations.openLibrary}>
+                    {presentations.runningCount ? `Saved presentations (${presentations.runningCount} generating)` : 'Saved presentations'}
+                  </MenuItem>
                 </MenuList>
               </Menu>
 

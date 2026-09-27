@@ -35,7 +35,6 @@ import {
   TipTapEditor,
 } from "./components";
 import { useGlobalSettings } from "../../Providers/SettingsProvider";
-import { usePresentations } from '../../Providers/PresentationsProvider';
 import { SidePanel } from "../../components/SidePanel";
 import { Projects } from "../../features";
 import { useProject } from "../../state";
@@ -114,7 +113,6 @@ interface SelectedActivity {
 }
 
 export const ChatScreen: FC = () => {
-  const presentations = usePresentations();
   const [userInput, setUserInput] = useState("");
   const toast = useToast();
   const [chats, setChats] = useState<Chat[]>([]);
@@ -939,7 +937,7 @@ export const ChatScreen: FC = () => {
   return (
     <ScreenContainer>
       <ChatHeader
-        profileMenu={<Flex align="center" gap={2}><NavButton onClick={presentations.openLibrary}>Presentations{presentations.runningCount ? ` (${presentations.runningCount})` : ''}</NavButton><NavButton onClick={onSettingsOpen}>Settings</NavButton></Flex>}
+        profileMenu={<NavButton onClick={onSettingsOpen}>Settings</NavButton>}
       />
       <SidePanel
         gridArea={"sidebar"}
