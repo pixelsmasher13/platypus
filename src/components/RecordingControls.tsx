@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, AlertDescription, Box, Button, HStack, Progress, Text, VStack } from '@chakra-ui/react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { useGlobalSettings } from '../Providers/SettingsProvider';
-import { effectiveRecordingSource, preferredRecordingSource, recordingSourceNames, type RecordingSource } from './recordingSource';
+import { effectiveRecordingSource, preferredRecordingSource, type RecordingSource } from './recordingSource';
 
 export { recordingSourceNames, type RecordingSource } from './recordingSource';
 export const isMac = /Mac/.test(navigator.platform);
@@ -51,11 +51,6 @@ export function MeetingAudioPermissionNotice({ preferred }: { preferred: Recordi
       <Button size="xs" variant="ghost" onClick={restart}>Restart Platypus</Button>
     </HStack>
   </Alert>;
-}
-
-export function RecordingSourceCaption({ source }: { source: RecordingSource }) {
-  if (!isMac) return null;
-  return <Text fontSize="xs" color="gray.500" textAlign="center" mt={1}>{recordingSourceNames[source]} · change in Settings</Text>;
 }
 
 type CaptureStatus = { recording_id: string; recording: boolean; microphone: string; meeting_audio: string; microphone_level: number; meeting_level: number; warning: string | null };

@@ -2,7 +2,7 @@
 
 ## Capture
 
-The native recorder supports three source combinations, chosen with two switches in Settings > General > Meeting audio rather than per recording. The Record button shows the active one.
+The native recorder supports three source combinations, chosen with two switches in Settings > General > Meeting audio rather than per recording.
 
 - **Mic + meeting audio** (both switches on; default on macOS): default input device plus the computer's audio.
 - **Microphone only** (computer audio off): voice notes and in-person meetings; also the only Windows path.

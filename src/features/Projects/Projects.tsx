@@ -1,5 +1,5 @@
 import { RecordingRecovery, useRecordingOwner } from "../../components/RecordingRecovery";
-import { RecordingMeters, MeetingAudioPermissionNotice, RecordingSourceCaption, useRecordingSource } from "../../components/RecordingControls";
+import { RecordingMeters, MeetingAudioPermissionNotice, useRecordingSource } from "../../components/RecordingControls";
 import { effectiveRecordingSource } from "../../components/recordingSource";
 import { transcriptHtml, type TranscriptSegment } from "../../screens/ChatScreen/meetingSources";
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
@@ -1162,7 +1162,6 @@ const ProjectSelector: FC<{
           </Button>
           </Flex>
         )}
-        {!isRecording && !isTranscribing && !isDownloadingModel && <RecordingSourceCaption source={recordingSource} />}
         {!isRecording && <MeetingAudioPermissionNotice preferred={preferredRecordingSource} />}
 
         {isRecording && (
