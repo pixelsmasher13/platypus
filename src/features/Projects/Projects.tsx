@@ -1,5 +1,5 @@
 import { RecordingRecovery, useRecordingOwner } from "../../components/RecordingRecovery";
-import { RecordingSourcePicker, RecordingMeters, defaultRecordingSource, type RecordingSource } from "../../components/RecordingControls";
+import { RecordingSourcePicker, RecordingMeters, MeetingAudioPermissionNotice, useMeetingAudioPermission, needsMeetingAudio, defaultRecordingSource, type RecordingSource } from "../../components/RecordingControls";
 import { transcriptHtml, type TranscriptSegment } from "../../screens/ChatScreen/meetingSources";
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
 import { type FC, useState, useMemo, useRef, useEffect } from "react";
@@ -342,6 +342,7 @@ const ProjectSelector: FC<{
   }, []);
   
   const toast = useToast();
+  const meetingAudio = useMeetingAudioPermission();
   const { settings } = useGlobalSettings();
 
   // Filter projects by name
@@ -499,6 +500,12 @@ const ProjectSelector: FC<{
         duration: 5000,
         isClosable: true,
       });
+      return;
+    }
+
+    if (needsMeetingAudio(recordingSource) && !(await meetingAudio.refresh())) {
+      await meetingAudio.request();
+      toast({ title: "Meeting audio isn't allowed yet", description: "Allow Platypus under Screen & System Audio Recording and restart, or switch to Microphone only.", status: "warning", duration: 6000, isClosable: true });
       return;
     }
 
@@ -1161,6 +1168,7 @@ const ProjectSelector: FC<{
           <RecordingSourcePicker value={recordingSource} onChange={setRecordingSource} disabled={isPreparingRecording || isProcessingRecording} />
           </Flex>
         )}
+        {!isRecording && <MeetingAudioPermissionNotice source={recordingSource} />}
 
         {isRecording && (
           <Box>

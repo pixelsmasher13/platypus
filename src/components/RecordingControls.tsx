@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Box, HStack, IconButton, Menu, MenuButton, MenuItemOption, MenuList, MenuOptionGroup, Progress, Text, VStack } from '@chakra-ui/react';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, AlertDescription, Box, Button, HStack, IconButton, Menu, MenuButton, MenuItemOption, MenuList, MenuOptionGroup, Progress, Text, VStack } from '@chakra-ui/react';
 import { ChevronDown } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 
@@ -17,6 +17,43 @@ export function RecordingSourcePicker({ value, onChange, disabled }: { value: Re
       </MenuOptionGroup>
     </MenuList>
   </Menu>;
+}
+
+// Screen & System Audio Recording has no in-app Allow button: macOS sends the user to
+// System Settings and applies the grant after Platypus relaunches. Ask early and keep
+// the state visible so Record never fails in the middle of a meeting.
+export const needsMeetingAudio = (source: RecordingSource) => isMac && source !== 'microphone';
+export function useMeetingAudioPermission() {
+  const [granted, setGranted] = useState<boolean | null>(isMac ? null : true);
+  const refresh = useCallback(async () => {
+    if (!isMac) return true;
+    try { const value = await invoke<boolean>('meeting_audio_permission'); setGranted(value); return value; } catch { return false; }
+  }, []);
+  useEffect(() => {
+    void refresh();
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [refresh]);
+  const request = useCallback(async () => {
+    if (!isMac) return true;
+    try { const value = await invoke<boolean>('request_meeting_audio_permission'); setGranted(value); return value; } catch { return false; }
+  }, []);
+  const openSettings = useCallback(() => invoke('open_meeting_audio_settings').catch(() => {}), []);
+  const restart = useCallback(() => invoke('restart_app').catch(() => {}), []);
+  // The system prompt appears once per install; afterwards System Settings is the only path.
+  const allow = useCallback(async () => { if (!(await request())) await openSettings(); }, [request, openSettings]);
+  return { granted, refresh, request, allow, openSettings, restart };
+}
+export function MeetingAudioPermissionNotice({ source }: { source: RecordingSource }) {
+  const { granted, allow, restart } = useMeetingAudioPermission();
+  if (!needsMeetingAudio(source) || granted !== false) return null;
+  return <Alert status="info" variant="subtle" borderRadius="md" fontSize="xs" py={2} px={3} mt={2} flexDirection="column" alignItems="flex-start" gap={1.5}>
+    <AlertDescription>Meeting audio needs a one-time macOS permission. Allow Platypus under <b>Screen &amp; System Audio Recording</b>, then restart Platypus. Nothing on screen is recorded. Microphone-only recording works now.</AlertDescription>
+    <HStack spacing={2}>
+      <Button size="xs" colorScheme="teal" onClick={allow}>Allow meeting audio</Button>
+      <Button size="xs" variant="ghost" onClick={restart}>Restart Platypus</Button>
+    </HStack>
+  </Alert>;
 }
 
 type CaptureStatus = { recording_id: string; recording: boolean; microphone: string; meeting_audio: string; microphone_level: number; meeting_level: number; warning: string | null };

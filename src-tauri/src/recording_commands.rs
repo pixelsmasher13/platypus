@@ -11,6 +11,33 @@ pub fn recording_root(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 pub fn get_audio_capture_status() -> crate::engine::audio_engine::CaptureStatus {
     crate::engine::audio_engine::capture_status()
 }
+#[tauri::command]
+pub fn meeting_audio_permission() -> bool {
+    crate::engine::audio_engine::meeting_audio_allowed()
+}
+#[tauri::command]
+pub fn request_meeting_audio_permission() -> bool {
+    crate::engine::audio_engine::request_meeting_audio()
+}
+#[tauri::command]
+pub fn open_meeting_audio_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Meeting audio permission is a macOS setting.".into())
+    }
+}
+#[tauri::command]
+pub fn restart_app(app_handle: AppHandle) {
+    app_handle.restart();
+}
 #[derive(serde::Serialize)]
 pub struct RecordingDetails {
     #[serde(flatten)]

@@ -1,5 +1,5 @@
 import { useRecordingOwner } from "../../../components/RecordingRecovery";
-import { RecordingSourcePicker, RecordingMeters, defaultRecordingSource, type RecordingSource } from "../../../components/RecordingControls";
+import { RecordingSourcePicker, RecordingMeters, MeetingAudioPermissionNotice, useMeetingAudioPermission, needsMeetingAudio, defaultRecordingSource, type RecordingSource } from "../../../components/RecordingControls";
 import { TranscriptExtension } from "./TranscriptExtension";
 import { MeetingSourcesModal } from "./MeetingSourcesModal";
 import { extractMeetingSources, transcriptNode, transcriptHtml, type MeetingSources, type TranscriptSegment } from "../meetingSources";
@@ -109,6 +109,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const meetingAudio = useMeetingAudioPermission();
   const notify = useNotify();
   const presentations = usePresentations();
   const { settings } = useGlobalSettings();
@@ -319,6 +320,13 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
         isClosable: true,
         position: "bottom-right",
       });
+      return;
+    }
+
+    if (needsMeetingAudio(recordingSource) && !(await meetingAudio.refresh())) {
+      // Surfaces the system prompt on first use; otherwise the inline notice explains the fix.
+      await meetingAudio.request();
+      toast({ title: "Meeting audio isn't allowed yet", description: "Allow Platypus under Screen & System Audio Recording and restart, or switch to Microphone only.", status: "warning", duration: 6000, isClosable: true, position: "bottom-right" });
       return;
     }
 
@@ -1047,6 +1055,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 )}
               </Flex>
               {isRecording && <RecordingMeters recordingId={recordingIdRef.current} source={recordingSource} />}
+              {!isRecording && <MeetingAudioPermissionNotice source={recordingSource} />}
               {recordingLocalRef.current && isRecording && (
                 <LiveTranscriptPreview update={liveTranscript} />
               )}

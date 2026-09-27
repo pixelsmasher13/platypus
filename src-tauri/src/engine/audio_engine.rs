@@ -102,6 +102,33 @@ extern "C" {
         capacity: usize,
     ) -> *mut std::ffi::c_void;
     fn platypus_system_audio_stop(handle: *mut std::ffi::c_void);
+    fn platypus_meeting_audio_allowed() -> i32;
+    fn platypus_meeting_audio_request() -> i32;
+}
+
+/// Whether macOS currently lets this process capture meeting audio. Never prompts.
+pub fn meeting_audio_allowed() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe { platypus_meeting_audio_allowed() == 1 }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
+}
+
+/// Shows the macOS permission prompt once per install and returns the current state.
+/// The grant takes effect after Platypus relaunches, so callers keep the notice up.
+pub fn request_meeting_audio() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe { platypus_meeting_audio_request() == 1 }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
 }
 #[cfg(target_os = "macos")]
 impl SystemCapture {

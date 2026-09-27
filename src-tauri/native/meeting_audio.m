@@ -3,6 +3,7 @@
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreAudio/CoreAudioTypes.h>
+#import <CoreGraphics/CoreGraphics.h>
 
 typedef void (*AudioCallback)(void *, const float *, size_t, double);
 typedef void (*ErrorCallback)(void *, const char *);
@@ -80,7 +81,13 @@ void *platypus_system_audio_start(AudioCallback callback, ErrorCallback errorCal
                 return NULL;
             }
             if (failure || !content.displays.count) {
-                snprintf(error, capacity, "Meeting audio unavailable. Allow Platypus in System Settings > Privacy & Security > Screen & System Audio Recording, then restart Platypus. %s", failure.localizedDescription.UTF8String ?: "No display available.");
+                // ScreenCaptureKit reports "user declined TCCs" both before the first grant and
+                // after a denial; the preflight distinguishes permission from other failures.
+                if (!CGPreflightScreenCaptureAccess()) {
+                    snprintf(error, capacity, "Platypus isn't allowed to hear meeting audio yet. Allow it in System Settings > Privacy & Security > Screen & System Audio Recording and reopen Platypus, or choose Microphone only.");
+                } else {
+                    snprintf(error, capacity, "Meeting audio unavailable: %s", failure.localizedDescription.UTF8String ?: "no display available.");
+                }
                 return NULL;
             }
             PlatypusAudioCapture *capture = [PlatypusAudioCapture new];
@@ -129,4 +136,15 @@ void platypus_system_audio_stop(void *handle) {
             @synchronized(capture) { capture.context = NULL; }
         }
     }
+}
+
+// Screen & System Audio Recording has no in-app Allow button: the grant happens in
+// System Settings and applies once Platypus relaunches. These never start a capture.
+int platypus_meeting_audio_allowed(void) {
+    return CGPreflightScreenCaptureAccess() ? 1 : 0;
+}
+// Registers Platypus in the Screen & System Audio Recording list and shows the system
+// prompt once per install; later calls return the current state silently.
+int platypus_meeting_audio_request(void) {
+    return CGRequestScreenCaptureAccess() ? 1 : 0;
 }

@@ -4,6 +4,9 @@ import styled from "styled-components";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input, Select } from "@chakra-ui/react";
 import { useGlobalSettings } from "@/Providers/SettingsProvider";
+import { invoke } from "@tauri-apps/api/tauri";
+
+const isMac = /Mac/.test(navigator.platform);
 
 const KeyContainer = styled.div`
   display: flex;
@@ -68,7 +71,9 @@ const Dot = styled(motion.div)`
   margin: 0 5px;
 `;
 
-const initialSteps = [
+type Step = { title: string; content: string; prompts?: string[]; kind?: "permission" | "keys" };
+
+const initialSteps: Step[] = [
   {
     title: "Welcome to Platypus",
     content: "Notes, transcription, and knowledge management — all in one fast, private app.",
@@ -82,9 +87,20 @@ const initialSteps = [
       "Brainstorm launch ideas",
     ],
   },
+  // macOS files system audio under Screen & System Audio Recording, which has no in-app
+  // Allow button and applies after a relaunch. Asking here, with context, avoids a failed
+  // first recording mid-meeting.
+  ...(isMac
+    ? [{
+        title: "Let Platypus hear your meetings",
+        content: "To transcribe the other side of Zoom, Teams, or Meet calls, macOS needs you to allow Platypus under Screen & System Audio Recording. Nothing on your screen is recorded. The permission takes effect the next time you open Platypus.",
+        kind: "permission" as const,
+      }]
+    : []),
   {
     title: "Add your API key to get started",
     content: "Pick your preferred AI provider. You can always change this later in Settings.",
+    kind: "keys",
   },
 ];
 
@@ -98,6 +114,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   const { settings, update } = useGlobalSettings();
   const steps = initialSteps;
   const [step, setStep] = useState(0);
+  const [meetingAudio, setMeetingAudio] = useState<"unknown" | "granted" | "pending">("unknown");
+  const allowMeetingAudio = async () => {
+    const granted = await invoke<boolean>("request_meeting_audio_permission").catch(() => false);
+    setMeetingAudio(granted ? "granted" : "pending");
+  };
+  const openMeetingAudioSettings = () => invoke("open_meeting_audio_settings").catch(() => {});
 
   type ApiChoice = "claude" | "openai" | "gemini" | "local";
   const handleApiChoiceChange = (value: ApiChoice) => {
@@ -133,15 +155,6 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
       console.error("API key not set");
     }
 
-//  if (isMacOS && step === steps.length - 2) {
- //     try {
- //       await invoke("prompt_for_accessibility_permissions");
- //     } catch (error) {
- //       console.error("Error requesting permissions:", error);
- //       // You might want to handle this error, perhaps by showing a message to the user
- //     }
- //   }
-
     if (step < steps.length - 1) {
       setStep(step + 1);
     } else {
@@ -166,7 +179,24 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
           >
             <Title>{steps[step].title}</Title>
             <Content>{steps[step].content}</Content>
-            {step < steps.length - 1 ? (
+            {steps[step].kind === "permission" ? (
+              <PermissionContainer>
+                {meetingAudio === "granted" ? (
+                  <StatusText>Meeting audio is allowed. You're all set.</StatusText>
+                ) : (
+                  <SecondaryButton whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={allowMeetingAudio}>
+                    Allow meeting audio
+                  </SecondaryButton>
+                )}
+                {meetingAudio === "pending" && (
+                  <StatusText>
+                    Turn on Platypus in the list macOS opened. If nothing appeared,{" "}
+                    <LinkButton type="button" onClick={openMeetingAudioSettings}>open System Settings</LinkButton>.
+                    You can also do this later from the Record button.
+                  </StatusText>
+                )}
+              </PermissionContainer>
+            ) : steps[step].kind !== "keys" ? (
               steps[step].prompts && (
                 <PromptsContainer>
                   {steps[step]?.prompts?.map((prompt, index) => (
@@ -268,6 +298,40 @@ const Prompt = styled.div`
     background-color: rgba(255, 255, 255, 0.2);
     transform: translateY(-2px);
   }
+`;
+
+const PermissionContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 2rem;
+`;
+
+const SecondaryButton = styled(motion.button)`
+  padding: 10px 22px;
+  font-size: 1rem;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 30px;
+  cursor: pointer;
+`;
+
+const StatusText = styled.p`
+  font-size: 0.95rem;
+  opacity: 0.9;
+  max-width: 560px;
+`;
+
+const LinkButton = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
 `;
 
 const LocalTranscriptionToggle = styled.div`

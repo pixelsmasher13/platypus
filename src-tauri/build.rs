@@ -6,7 +6,7 @@ fn main() {
             .flag("-fobjc-arc")
             .flag("-fblocks")
             .compile("meeting_audio");
-        for framework in ["Foundation", "CoreMedia", "CoreAudio"] {
+        for framework in ["Foundation", "CoreMedia", "CoreAudio", "CoreGraphics"] {
             println!("cargo:rustc-link-lib=framework={}", framework);
         }
         // Keep microphone-only recording available on older macOS releases.

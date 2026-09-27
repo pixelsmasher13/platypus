@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { appWindow } from "@tauri-apps/api/window";
 import { Box, Flex, Text, Button, CloseButton } from "@chakra-ui/react";
 import { Mic } from "lucide-react";
+import { useMeetingAudioPermission } from "./RecordingControls";
 
 const AUTO_DISMISS_MS = 30_000; // 30 seconds
 
@@ -16,6 +17,7 @@ const shortenAppName = (name: string): string => {
 
 export const MeetingDetectionBanner = () => {
   const [meetingApp, setMeetingApp] = useState<string | null>(null);
+  const meetingAudio = useMeetingAudioPermission();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -59,6 +61,10 @@ export const MeetingDetectionBanner = () => {
     dismissBanner();
   };
 
+  // Offer the permission instead of a recording that would fail at the first ScreenCaptureKit call.
+  const handleAllow = async () => { await meetingAudio.allow(); dismissBanner(); };
+  const needsPermission = meetingAudio.granted === false;
+
   return (
     <Box
       bg="teal.500"
@@ -74,15 +80,15 @@ export const MeetingDetectionBanner = () => {
       <Flex align="center" justify="center" gap={4}>
         <Mic size={16} />
         <Text fontWeight="bold" fontSize="sm">
-          {shortenAppName(meetingApp)} meeting detected
+          {shortenAppName(meetingApp)} meeting detected{needsPermission ? " — allow meeting audio to take notes" : ""}
         </Text>
         <Button
           size="sm"
           colorScheme="whiteAlpha"
           variant="solid"
-          onClick={handleStartRecording}
+          onClick={needsPermission ? handleAllow : handleStartRecording}
         >
-          Start notes
+          {needsPermission ? "Allow meeting audio" : "Start notes"}
         </Button>
         <CloseButton size="sm" onClick={dismissBanner} />
       </Flex>

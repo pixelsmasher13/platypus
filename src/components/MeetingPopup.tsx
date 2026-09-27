@@ -124,11 +124,14 @@ const shortenAppName = (name: string): string => {
 export const MeetingPopup = () => {
   const [appName, setAppName] = useState<string>("");
   const [closeVisible, setCloseVisible] = useState(false);
+  // null until known; the popup only offers "Start notes" when meeting audio can actually start.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
     const unlisten = listen<{ app_name: string }>("meeting-popup-data", (event) => {
       setAppName(event.payload.app_name);
     });
+    invoke<boolean>("meeting_audio_permission").then(setAllowed).catch(() => setAllowed(true));
     return () => {
       unlisten.then((f) => f());
     };
@@ -140,8 +143,16 @@ export const MeetingPopup = () => {
   const handleDismiss = () => {
     invoke("meeting_popup_dismiss").catch(() => {});
   };
+  const handleAllow = async () => {
+    const granted = await invoke<boolean>("request_meeting_audio_permission").catch(() => false);
+    if (!granted) await invoke("open_meeting_audio_settings").catch(() => {});
+    handleDismiss();
+  };
 
-  const subtitle = appName
+  const needsPermission = allowed === false;
+  const subtitle = needsPermission
+    ? "Allow meeting audio to take notes"
+    : appName
     ? `${shortenAppName(appName)} meeting detected`
     : "Detecting meeting…";
 
@@ -164,8 +175,8 @@ export const MeetingPopup = () => {
           <div style={TITLE_STYLE}>Platypus</div>
           <div style={SUBTITLE_STYLE}>{subtitle}</div>
         </div>
-        <button style={BUTTON_STYLE} onClick={handleStart}>
-          Start notes
+        <button style={BUTTON_STYLE} onClick={needsPermission ? handleAllow : handleStart}>
+          {needsPermission ? "Allow" : "Start notes"}
         </button>
       </div>
     </div>
