@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react';
 import { Box, Button, Flex, Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, ModalFooter, Spinner, Text } from '@chakra-ui/react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { Presentation } from 'lucide-react';
@@ -7,7 +7,11 @@ import { SlideGeneratorModal } from '../screens/ChatScreen/components/SlideGener
 import { PresentationJobs, mergePresentations, type PresentationJob, type PresentationRequest, type SavedPresentation } from '../screens/ChatScreen/slides/presentationJobs';
 import type { Slide } from '../screens/ChatScreen/slides/slideDeck';
 
-type Context = { start: (request: PresentationRequest) => boolean; openLibrary: () => void; runningCount: number };
+type Context = {
+  start: (request: PresentationRequest) => boolean; openLibrary: () => void; runningCount: number;
+  // Exposed so the Notes panel can list each note's decks beside it.
+  decks: SavedPresentation[]; jobs: PresentationJob[]; open: (deck: SavedPresentation) => void;
+};
 const PresentationsContext = createContext<Context | null>(null);
 export function usePresentations() {
   const context = useContext(PresentationsContext);
@@ -31,7 +35,9 @@ export function PresentationsProvider({ children }: PropsWithChildren) {
     } catch (failure) { setError(String(failure)); }
     finally { setLoading(false); }
   }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
   const openLibrary = useCallback(() => { setLibraryOpen(true); void refresh(); }, [refresh]);
+  const open = useCallback((deck: SavedPresentation) => { setLibraryOpen(false); setActive(deck); }, []);
   const controller = useRef<PresentationJobs>();
   if (!controller.current) controller.current = new PresentationJobs(
     request => invoke<SavedPresentation>('generate_saved_presentation', { request }),
@@ -55,7 +61,7 @@ export function PresentationsProvider({ children }: PropsWithChildren) {
     setDecks(previous => mergePresentations(previous, [saved]));
     // Keep the editor's initial snapshot stable while it is open.
   };
-  return <PresentationsContext.Provider value={{ start, openLibrary, runningCount: jobs.filter(job => job.status === 'running').length }}>
+  return <PresentationsContext.Provider value={{ start, openLibrary, runningCount: jobs.filter(job => job.status === 'running').length, decks, jobs, open }}>
     {children}
     <Modal isOpen={libraryOpen} onClose={() => setLibraryOpen(false)} size="2xl" scrollBehavior="inside">
       <ModalOverlay /><ModalContent maxH="85vh"><ModalHeader><Flex align="center" gap={2}><Presentation size={20} />Presentations</Flex></ModalHeader><ModalCloseButton />

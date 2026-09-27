@@ -4,8 +4,10 @@ import {
   Box, Button, Flex, IconButton, Input, InputGroup, InputLeftElement, InputRightElement,
   Menu, MenuButton, MenuItem, MenuList, MenuOptionGroup, MenuItemOption, Spinner, Text, Tooltip, useToast,
 } from '@chakra-ui/react';
-import { ArrowDownUp, Edit, File, MoreHorizontal, Search, Trash2, X } from 'lucide-react';
+import { ArrowDownUp, Edit, File, MoreHorizontal, Presentation, Search, Trash2, X } from 'lucide-react';
 import type { Project } from '../../data/project';
+import { usePresentations } from '../../Providers/PresentationsProvider';
+import type { SavedPresentation } from '../../screens/ChatScreen/slides/presentationJobs';
 import {
   collectNotes, LIBRARY_PREFERENCES_KEY, parseLibraryPreferences, selectLibraryNotes,
   type NoteSort,
@@ -25,6 +27,14 @@ type Props = {
 };
 
 export function NoteLibrary({ projects, selectedProject, selectedNoteId, onSelect, onRename, onDelete, onCreate, onPaste }: Props) {
+  // Decks live under the note they came from; there is no separate presentations view.
+  const { decks, jobs, open: openDeck } = usePresentations();
+  const decksByNote = useMemo(() => {
+    const map = new Map<number, SavedPresentation[]>();
+    for (const deck of decks) if (deck.source_id != null) map.set(deck.source_id, [...(map.get(deck.source_id) || []), deck]);
+    return map;
+  }, [decks]);
+  const generating = useMemo(() => new Set(jobs.filter(job => job.status === 'running' && job.request.sourceId != null).map(job => job.request.sourceId as number)), [jobs]);
   const [query, setQuery] = useState('');
   const term = query.trim();
   const [preferences, setPreferences] = useState(() => {
@@ -137,7 +147,8 @@ export function NoteLibrary({ projects, selectedProject, selectedNoteId, onSelec
       {searchFailed && <Text fontSize="xs" color="orange.700">Content search is unavailable. Showing title and project matches.</Text>}
       <Box ref={listRef} flex={1} minH={0} overflowY="auto" onPaste={onPaste} aria-label="Notes" role="region">
         {results.map((note, index) => (
-          <Flex key={note.id} role="group" align="start" gap={1} mb={1} borderRadius="lg" border="1px solid transparent"
+          <Box key={note.id} mb={1}>
+          <Flex role="group" align="start" gap={1} borderRadius="lg" border="1px solid transparent"
             position="relative" bg="transparent" _hover={{ bg: 'gray.50' }}
             _before={selectedNoteId === note.id ? {
               content: '""', position: 'absolute', left: 0, top: '12px',
@@ -180,6 +191,19 @@ export function NoteLibrary({ projects, selectedProject, selectedNoteId, onSelec
               </MenuList>
             </Menu>
           </Flex>
+          {(decksByNote.has(note.id) || generating.has(note.id)) && (
+            <Flex direction="column" pl={10} pr={2} pb={1} gap={0.5}>
+              {generating.has(note.id) && <Flex align="center" gap={2} h="24px" px={2} color="gray.500"><Spinner size="xs" /><Text fontSize="xs">Creating slide deck…</Text></Flex>}
+              {decksByNote.get(note.id)?.map(deck => (
+                <Button key={deck.id} variant="ghost" size="xs" h="24px" px={2} justifyContent="flex-start" fontWeight="normal" color="gray.600"
+                  leftIcon={<Presentation size={12} />} title={`${deck.slide_count} slides · ${deck.kind === 'designed' ? 'PowerPoint' : 'Editable draft'}`}
+                  onClick={() => openDeck(deck)}>
+                  <Text as="span" fontSize="xs" noOfLines={1}>{deck.title}</Text>
+                </Button>
+              ))}
+            </Flex>
+          )}
+          </Box>
         ))}
         {!results.length && !searching && <Flex direction="column" align="center" textAlign="center" px={3} py={8} gap={3}>
           <Box color="gray.400">{term ? <Search size={24} /> : <File size={24} />}</Box>
