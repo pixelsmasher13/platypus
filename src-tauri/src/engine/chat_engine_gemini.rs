@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
-// Constants for Gemini model versions
-const GEMINI_URL: &str = "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent";
+use platypus_notes::models::{gemini_url, selected_model, DEFAULT_GEMINI_MODEL};
 
 #[derive(Serialize, Deserialize)]
 pub struct Message {
@@ -84,10 +83,7 @@ pub async fn send_prompt_to_gemini(
         .build()
         .map_err(|e| format!("Failed to create client: {}", e))?;
 
-    let _model_to_use = match model_id.as_deref() {
-        Some("gemini-3-pro-preview") => "gemini-3-pro-preview",
-        _ => "gemini-2.0-flash", // Default
-    };
+    let model_to_use = selected_model(model_id.as_deref(), DEFAULT_GEMINI_MODEL);
     let rag_top_k: usize = app_handle
         .db(|db| get_setting(db, "rag_top_k"))
         .map(|s| s.setting_value.parse().unwrap_or(DEFAULT_RAG_TOP_K))
@@ -166,7 +162,7 @@ pub async fn send_prompt_to_gemini(
         });
     }
 
-    let api_url = format!("{}?key={}", GEMINI_URL, setting.setting_value);
+    let api_url = format!("{}?key={}", gemini_url(model_to_use), setting.setting_value);
 
     let request_body = GeminiRequest {
         contents,
@@ -282,7 +278,7 @@ pub async fn name_conversation_gemini(
         },
     ];
 
-    let api_url = format!("{}?key={}", GEMINI_URL, setting.setting_value);
+    let api_url = format!("{}?key={}", gemini_url(DEFAULT_GEMINI_MODEL), setting.setting_value);
 
     let request_body = GeminiRequest {
         contents,

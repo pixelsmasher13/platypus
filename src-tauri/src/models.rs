@@ -4,6 +4,12 @@ use serde_json::{json, Value};
 pub const DEFAULT_CLAUDE_MODEL: &str = "claude-sonnet-5";
 pub const DEFAULT_OPENAI_MODEL: &str = "gpt-6-astra";
 pub const QUICK_OPENAI_MODEL: &str = "gpt-6-luna";
+pub const DEFAULT_GEMINI_MODEL: &str = "gemini-3.8-flash";
+
+// Every Gemini call site builds its endpoint from the selected model.
+pub fn gemini_url(model: &str) -> String {
+    format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", model.trim())
+}
 
 pub fn selected_model<'a>(requested: Option<&'a str>, default: &'a str) -> &'a str {
     requested.map(str::trim).filter(|s| !s.is_empty()).unwrap_or(default)
@@ -38,7 +44,10 @@ fn is_family(model: &str, family: &str) -> bool {
 }
 
 pub fn effort_options(model: &str) -> &'static [&'static str] {
-    if is_family(model, "gpt-6-astra") { return &["low", "medium", "high", "xhigh", "max"]; }
+    // Opus 5 thinks by default; low effort replaces "none" (disabling thinking degrades its output).
+    if ["gpt-6-astra", "claude-opus-5"].iter().any(|family| is_family(model, family)) {
+        return &["low", "medium", "high", "xhigh", "max"];
+    }
     if ["gpt-6-sol", "gpt-6-luna", "claude-sonnet-5"].iter().any(|family| is_family(model, family)) {
         return &["none", "low", "medium", "high", "xhigh", "max"];
     }
@@ -123,6 +132,7 @@ mod tests {
         }
         assert_eq!(selected_model(Some("  "), DEFAULT_CLAUDE_MODEL), "claude-sonnet-5");
         assert_eq!(selected_model(None, DEFAULT_OPENAI_MODEL), "gpt-6-astra");
+        assert_eq!(gemini_url(" gemini-3.8-flash "), "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent");
     }
     #[test]
     fn claude_ignores_thinking_and_collects_all_text_blocks() {
@@ -149,7 +159,7 @@ mod tests {
     }
     #[test]
     fn each_supported_effort_reaches_the_provider() {
-        for model in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "claude-sonnet-5", "claude-opus-4-6"] {
+        for model in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "claude-sonnet-5", "claude-opus-5", "claude-opus-4-6"] {
             for effort in effort_options(model) {
                 let source = json!({"model": model, "max_tokens": 8192, "messages": [{"role":"user", "content":"Notes"}]});
                 if model.starts_with("gpt") {
@@ -179,6 +189,8 @@ mod tests {
         let source = json!({"model":"claude-haiku-4-5", "max_tokens":8192});
         assert_eq!(claude_request(source.clone(), Some("high")), source);
         assert!(!effort_options("claude-opus-4-6").contains(&"xhigh"));
+        assert!(!effort_options("claude-opus-5").contains(&"none"));
+        assert_eq!(selected_effort("claude-opus-5", Some("none")), Some("low"));
         assert!(effort_options("gpt-6-astra-custom").contains(&"max"));
         assert!(effort_options("gpt-6-astra2").is_empty());
     }

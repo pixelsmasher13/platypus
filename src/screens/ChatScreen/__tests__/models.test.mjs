@@ -22,6 +22,8 @@ test('explicit models, including older pinned IDs and custom models, remain resp
 });
 test('every current GPT option routes to OpenAI', () => {
   assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'openai').map(m => m.id), ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
+  assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'claude').map(m => m.id), ['claude-sonnet-5', 'claude-haiku-4-5', 'claude-opus-5']);
+  assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'gemini').map(m => m.id), ['gemini-3.8-flash', 'gemini-3.1-pro-preview']);
   assert.equal(new Set(MODEL_OPTIONS.map(m => m.id)).size, MODEL_OPTIONS.length);
 });
 
@@ -34,7 +36,9 @@ test('effort options follow the selected model and retain independent saved choi
   assert.equal(selectedEffort('claude-sonnet-5', {}), 'none');
   assert.equal(selectedEffort('gpt-6-sol', {}), 'none');
   assert.deepEqual(effortOptions('claude-haiku-4-5'), []);
-  assert.deepEqual(effortOptions('gemini-3-pro-preview'), []);
+  assert.deepEqual(effortOptions('gemini-3.8-flash'), []);
+  assert.deepEqual(effortOptions('claude-opus-5'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(selectedEffort('claude-opus-5', { 'claude-opus-5': 'none' }), 'low');
   assert.ok(!effortOptions('claude-opus-4-6').includes('xhigh'));
   assert.ok(effortOptions('claude-sonnet-5').includes('max'));
 });

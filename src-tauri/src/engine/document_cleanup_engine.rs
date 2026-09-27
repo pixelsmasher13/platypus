@@ -2,7 +2,7 @@ use crate::engine::chatgpt_auth;
 use crate::engine::model_settings::saved_effort;
 use platypus_notes::models::claude_request;
 use platypus_notes::models::{DEFAULT_OPENAI_MODEL, send_openai};
-use platypus_notes::models::{selected_model, DEFAULT_CLAUDE_MODEL, claude_thinking, claude_text, ClaudeContent};
+use platypus_notes::models::{selected_model, gemini_url, DEFAULT_CLAUDE_MODEL, DEFAULT_GEMINI_MODEL, claude_thinking, claude_text, ClaudeContent};
 use platypus_notes::slides::{extract_json_array, parse_slides, Slide};
 use crate::configuration::state::ServiceAccess;
 use crate::repository::project_repository::get_project_document_snippets;
@@ -184,7 +184,6 @@ struct OllamaResponse {
 }
 
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
-const GEMINI_URL: &str = "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent";
 
 #[tauri::command]
 pub async fn clean_up_document_with_llm(
@@ -513,7 +512,7 @@ async fn call_gemini(
         }],
     }];
 
-    let api_url = format!("{}?key={}", GEMINI_URL, setting.setting_value);
+    let api_url = format!("{}?key={}", gemini_url(selected_model(model_id.as_deref(), DEFAULT_GEMINI_MODEL)), setting.setting_value);
 
     let request_body = GeminiRequest {
         contents,

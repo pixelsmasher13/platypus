@@ -58,9 +58,9 @@ See [how the two compare on a real earnings release](docs/presentation-quality.m
 
 | Provider   | Built-in choices                         |
 | ---------- | ---------------------------------------- |
-| Claude     | Sonnet 5 (default), Haiku 4.5, Opus 4.6  |
+| Claude     | Sonnet 5 (default), Haiku 4.5, Opus 5    |
 | OpenAI     | GPT-6 Astra (default), Sol, Luna         |
-| Google     | Gemini 3 Pro preview                     |
+| Google     | Gemini 3.8 Flash (default), Gemini 3.1 Pro preview |
 | Local      | Ollama (Llama 3.3 70B by default)        |
 
 Add API keys in Settings; custom Claude and OpenAI model IDs work too. For models that support it, reasoning effort (from Off/Low up to Max) is remembered per model across chat and generation.
