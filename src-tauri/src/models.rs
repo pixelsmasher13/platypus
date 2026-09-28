@@ -44,7 +44,7 @@ fn is_family(model: &str, family: &str) -> bool {
 }
 
 pub fn effort_options(model: &str) -> &'static [&'static str] {
-    // Opus 5 thinks by default; low effort replaces "none" (disabling thinking degrades its output).
+    // Opus 5/5.5 use thinking; Opus 5.5 rejects disabling it entirely.
     if ["gpt-6-astra", "claude-opus-5"].iter().any(|family| is_family(model, family)) {
         return &["low", "medium", "high", "xhigh", "max"];
     }
@@ -59,7 +59,9 @@ pub fn effort_options(model: &str) -> &'static [&'static str] {
 
 pub(crate) fn selected_effort<'a>(model: &str, requested: Option<&'a str>) -> Option<&'a str> {
     let options = effort_options(model);
-    requested.filter(|effort| options.contains(effort)).or_else(|| options.first().copied())
+    requested.filter(|effort| options.contains(effort)).or_else(|| {
+        if is_family(model, "claude-opus-5-5") { Some("medium") } else { options.first().copied() }
+    })
 }
 
 pub fn claude_request(mut request: Value, requested: Option<&str>) -> Value {
@@ -159,7 +161,7 @@ mod tests {
     }
     #[test]
     fn each_supported_effort_reaches_the_provider() {
-        for model in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "claude-sonnet-5", "claude-opus-5", "claude-opus-4-6"] {
+        for model in ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "claude-sonnet-5", "claude-opus-5", "claude-opus-5-5", "claude-opus-4-6"] {
             for effort in effort_options(model) {
                 let source = json!({"model": model, "max_tokens": 8192, "messages": [{"role":"user", "content":"Notes"}]});
                 if model.starts_with("gpt") {
@@ -193,6 +195,17 @@ mod tests {
         assert_eq!(selected_effort("claude-opus-5", Some("none")), Some("low"));
         assert!(effort_options("gpt-6-astra-custom").contains(&"max"));
         assert!(effort_options("gpt-6-astra2").is_empty());
+    }
+    #[test]
+    fn opus_55_defaults_to_medium_and_never_disables_thinking() {
+        for model in ["claude-opus-5-5", "claude-opus-5-5-20260922"] {
+            for effort in [None, Some("none"), Some("invalid")] {
+                let request = claude_request(json!({"model":model, "max_tokens":8192}), effort);
+                assert_eq!(request["thinking"]["type"], "adaptive");
+                assert_eq!(request["output_config"]["effort"], "medium");
+                assert_eq!(request["model"], model);
+            }
+        }
     }
     #[test]
     fn stream_keeps_split_json_and_unicode_intact() {

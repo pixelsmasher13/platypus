@@ -22,7 +22,7 @@ test('explicit models, including older pinned IDs and custom models, remain resp
 });
 test('every current GPT option routes to OpenAI', () => {
   assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'openai').map(m => m.id), ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
-  assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'claude').map(m => m.id), ['claude-sonnet-5', 'claude-haiku-4-5', 'claude-opus-5']);
+  assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'claude').map(m => m.id), ['claude-sonnet-5', 'claude-haiku-4-5', 'claude-opus-5-5']);
   assert.deepEqual(MODEL_OPTIONS.filter(m => m.provider === 'gemini').map(m => m.id), ['gemini-3.8-flash', 'gemini-3.1-pro-preview']);
   assert.equal(new Set(MODEL_OPTIONS.map(m => m.id)).size, MODEL_OPTIONS.length);
 });
@@ -41,6 +41,17 @@ test('effort options follow the selected model and retain independent saved choi
   assert.equal(selectedEffort('claude-opus-5', { 'claude-opus-5': 'none' }), 'low');
   assert.ok(!effortOptions('claude-opus-4-6').includes('xhigh'));
   assert.ok(effortOptions('claude-sonnet-5').includes('max'));
+});
+test('Opus 5.5 defaults to Medium and preserves supported saved efforts', () => {
+  for (const model of ['claude-opus-5-5', 'claude-opus-5-5-20260922']) {
+    assert.deepEqual(effortOptions(model), ['low', 'medium', 'high', 'xhigh', 'max']);
+    for (const stale of [undefined, 'none', 'invalid']) {
+      assert.equal(selectedEffort(model, stale ? { [model]: stale } : {}), 'medium');
+    }
+    for (const effort of effortOptions(model)) {
+      assert.equal(selectedEffort(model, { [model]: effort }), effort);
+    }
+  }
 });
 test('saved effort preferences survive reloads and tolerate malformed settings', () => {
   const saved = { 'claude-sonnet-5': 'high', 'gpt-6-sol': 'low' };

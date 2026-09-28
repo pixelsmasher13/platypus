@@ -10,7 +10,7 @@ export const DEFAULT_MODELS: Record<ModelProvider, string> = {
 export const MODEL_OPTIONS: { id: string; name: string; provider: ModelProvider; description: string }[] = [
   { id: DEFAULT_MODELS.claude, name: "Claude Sonnet 5", provider: "claude", description: "Balanced speed and intelligence" },
   { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "claude", description: "Fast, lightweight tasks" },
-  { id: "claude-opus-5", name: "Claude Opus 5", provider: "claude", description: "Most capable Claude model" },
+  { id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "claude", description: "Deep reasoning and complex documents" },
   { id: DEFAULT_MODELS.openai, name: "GPT-6 Astra", provider: "openai", description: "Most capable GPT model" },
   { id: "gpt-6-sol", name: "GPT-6 Sol", provider: "openai", description: "Strong reasoning at lower cost" },
   { id: "gpt-6-luna", name: "GPT-6 Luna", provider: "openai", description: "Fast, efficient everyday tasks" },
@@ -38,7 +38,7 @@ export const EFFORT_LABELS: Record<Effort, string> = {
 };
 const isFamily = (model: string, family: string) => model === family || model.startsWith(`${family}-`);
 export function effortOptions(model: string): Effort[] {
-  // Opus 5 thinks by default; low effort replaces "off" (disabling thinking degrades its output).
+  // Opus 5/5.5 use thinking; Opus 5.5 rejects disabling it entirely.
   if (["gpt-6-astra", "claude-opus-5"].some(family => isFamily(model, family))) return ["low", "medium", "high", "xhigh", "max"];
   if (["gpt-6-sol", "gpt-6-luna", "claude-sonnet-5"].some(family => isFamily(model, family))) {
     return ["none", "low", "medium", "high", "xhigh", "max"];
@@ -51,7 +51,7 @@ export function effortOptions(model: string): Effort[] {
 export function selectedEffort(model: string, preferences: Record<string, string>): Effort | undefined {
   const options = effortOptions(model);
   const saved = preferences[model] as Effort;
-  return options.includes(saved) ? saved : options[0];
+  return options.includes(saved) ? saved : isFamily(model, "claude-opus-5-5") ? "medium" : options[0];
 }
 export function parseEffortPreferences(raw: string): Record<string, string> {
   try {
