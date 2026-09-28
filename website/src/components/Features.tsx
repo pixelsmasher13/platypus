@@ -1,6 +1,6 @@
 import { type FC } from "react";
 import { Box, Container, Grid, Heading, Text, VStack, Flex } from "@chakra-ui/react";
-import { Cpu, Lock, Sparkles } from "lucide-react";
+import { Lock, MessageSquare } from "lucide-react";
 import { AppleIcon, WindowsIcon } from "./BrandIcons";
 
 const FEATURES = [
@@ -50,7 +50,7 @@ const FEATURES = [
         color="white"
         boxShadow="0 8px 24px -8px rgba(139, 92, 246, 0.4)"
       >
-        <Sparkles size={28} strokeWidth={2.2} />
+        <MessageSquare size={28} strokeWidth={2.2} />
       </Flex>
     ),
   },

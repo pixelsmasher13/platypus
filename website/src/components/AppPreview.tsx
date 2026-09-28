@@ -31,11 +31,10 @@ import {
   List,
   Undo,
   Redo,
-  Sparkles,
   NotebookPen,
   FolderInput,
-  X,
   MoreHorizontal,
+  ArrowDownUp,
 } from "lucide-react";
 import { useTypewriter } from "../hooks/useTypewriter";
 
@@ -73,30 +72,28 @@ const STATIC_NOTE_HTML = `
 </ul>
 `;
 
-const RAW_TRANSCRIPT =
-  "Yeah so I was thinking about the new transcription engine, basically what we shipped yesterday is way better than the old one. Um, the local model now takes about half a second on M-series Macs which feels real-time. The big remaining thing is speaker diarization, we should look at Deepgram or maybe a local ONNX pipeline. Alex said he'll do a write-up by Friday.";
+const STORY_TITLE = "Product sync — onboarding";
 
-// Already-transcribed text that's visible from the moment recording starts
-const LIVE_PREVIEW_PREFIX =
-  "...feels real-time on the new M-series Macs. ";
-// New text that streams in (~2-3 sec at normal pace)
-const LIVE_PREVIEW_STREAM =
-  "Biggest remaining issue is speaker diarization.";
+const RAW_TRANSCRIPT =
+  "So five of the eight pilot teams got stuck inviting teammates. They thought the invite was sent, but there was still a confirm step. Let's simplify that copy first, before we redesign the whole flow. Alex, can you have the copy ready Thursday? Great. Maya will run QA Friday morning. If that passes, we'll roll it out to the pilot teams Friday afternoon. Otherwise we wait until Monday.";
+
+const LIVE_PREVIEW_PREFIX = "Five of the eight pilot teams got stuck inviting teammates. ";
+const LIVE_PREVIEW_STREAM = "Let's simplify the copy before we redesign the whole flow.";
 
 const POLISHED_NOTES_HTML = `
-<h2>Engineering sync — Apr 22</h2>
-<h3>Updates</h3>
+<h3>What we learned</h3>
 <ul>
-  <li>Shipped new transcription engine yesterday — significantly faster than previous version</li>
-  <li>Local model now processes audio in ~0.5s on M-series Macs (effectively real-time)</li>
+  <li>5 of 8 pilot teams missed the final invite confirmation step.</li>
 </ul>
-<h3>Open questions</h3>
+<h3>Decision</h3>
 <ul>
-  <li>Speaker diarization approach: evaluate Deepgram cloud vs. local ONNX pipeline</li>
+  <li>Clarify the invite copy before considering a full redesign.</li>
+  <li>Pilot rollout Friday afternoon if QA passes; otherwise Monday.</li>
 </ul>
-<h3>Action items</h3>
+<h3>Next steps</h3>
 <ul>
-  <li><strong>Alex</strong> — diarization write-up by Friday</li>
+  <li><strong>Alex</strong> — updated invite copy by Thursday.</li>
+  <li><strong>Maya</strong> — QA on Friday morning.</li>
 </ul>
 `;
 
@@ -107,7 +104,7 @@ const PHASE_DURATIONS: Record<Phase, number> = {
   transcribing: 1000,
   raw: 4500,
   polishing: 1200,
-  polished: 5500,
+  polished: 8000,
 };
 
 const PHASE_ORDER: Phase[] = ["recording", "transcribing", "raw", "polishing", "polished"];
@@ -122,8 +119,10 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
   state = "story",
   height = "560px",
 }) => {
-  const docs = useMemo(() => SAMPLE_DOCS, []);
   const isStory = state === "story";
+  const docs = useMemo(() => SAMPLE_DOCS.map(doc =>
+    isStory && doc.active ? { ...doc, name: STORY_TITLE, project: "Product Planning" } : doc
+  ), [isStory]);
 
   const [phase, setPhase] = useState<Phase>("recording");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -154,7 +153,6 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
   const showRaw = isStory && (phase === "raw" || phase === "polishing");
   const showPolished = isStory && phase === "polished";
 
-  const rawTyped = useTypewriter(RAW_TRANSCRIPT, 18, 200, showRaw);
   // New chunk streams in at normal reading pace; prefix is shown immediately
   const livePreviewStreamed = useTypewriter(LIVE_PREVIEW_STREAM, 55, 600, isRecording);
 
@@ -165,15 +163,15 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
     title = "Customer interview — Acme Corp";
   } else if (showPolished) {
     html = POLISHED_NOTES_HTML;
-    title = "Engineering sync — Apr 22";
+    title = STORY_TITLE;
   } else if (showRaw) {
-    html = `<h2>Engineering sync — Apr 22</h2><p>${rawTyped}<span class="cursor">▊</span></p>`;
-    title = "Engineering sync — Apr 22";
+    html = `<h3>Transcript</h3><p>${RAW_TRANSCRIPT}</p>`;
+    title = STORY_TITLE;
   } else {
-    html = `<h2>Engineering sync — Apr 22</h2><p class="muted">${
+    html = `<p>${
       isTranscribing ? "Transcribing your recording…" : "Listening…"
     }</p>`;
-    title = "Engineering sync — Apr 22";
+    title = STORY_TITLE;
   }
 
   const editor = useEditor(
@@ -238,17 +236,9 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
             _hover={{ bg: "ink.50", borderColor: "ink.300" }}
           >
             <Text fontSize="sm" fontWeight="600" color="ink.800">
-              Customer Research
+              All projects
             </Text>
             <HStack spacing={1}>
-              <IconButton
-                aria-label="Clear"
-                icon={<X size={12} />}
-                size="xs"
-                variant="ghost"
-                minW="20px"
-                h="20px"
-              />
               <ChevronDown size={14} color="#A1A1AA" />
             </HStack>
           </Flex>
@@ -256,7 +246,7 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
           {/* Section heading + actions */}
           <Flex justify="space-between" align="center" mt={2}>
             <Text fontSize="sm" fontWeight="700" color="ink.800" letterSpacing="-0.01em">
-              Customer Research Notes
+              Notes
             </Text>
             <HStack spacing={0}>
               <IconButton aria-label="New note" icon={<FilePlus size={14} />} size="xs" variant="ghost" />
@@ -271,13 +261,18 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
               <Search size={13} color="#A1A1AA" />
             </InputLeftElement>
             <Input
-              placeholder="Search notes..."
+              placeholder="Search notes & content…"
               borderRadius="full"
               fontSize="xs"
               borderColor="ink.200"
               _focus={{ boxShadow: "0 0 0 1px var(--chakra-colors-teal-400)", borderColor: "teal.400" }}
             />
           </InputGroup>
+
+          <Flex align="center" justify="space-between">
+            <Text fontSize="xs" color="ink.500">{docs.length} notes</Text>
+            <IconButton aria-label="Sort notes" icon={<ArrowDownUp size={14} />} size="xs" variant="ghost" color="ink.500" />
+          </Flex>
 
           {/* Document rows — match real app: flat, hover-only, left border for active */}
           <Box flex={1} overflowY="auto" mx={-2} mt={1}>
@@ -289,11 +284,10 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
                 borderRadius="md"
                 align="center"
                 justify="space-between"
-                bg={doc.active ? "teal.50" : "transparent"}
-                borderLeft="3px solid"
-                borderLeftColor={doc.active ? "teal.400" : "transparent"}
+                bg="transparent"
+                _before={doc.active ? { content: '""', position: "absolute", left: 0, top: "12px", w: "2px", h: "22px", bg: "#91B5AE", borderRadius: "full" } : undefined}
                 cursor="pointer"
-                _hover={{ bg: doc.active ? "teal.50" : "ink.50" }}
+                _hover={{ bg: "ink.50" }}
                 position="relative"
                 minH="55px"
                 role="group"
@@ -307,7 +301,7 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
                     <Text
                       fontSize="sm"
                       color="ink.800"
-                      fontWeight="400"
+                      fontWeight={doc.active ? "500" : "400"}
                       noOfLines={2}
                       lineHeight={1.35}
                       pr="60px"
@@ -360,14 +354,14 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
               isDisabled={isTranscribing || isPolishing}
             />
             <IconButton
-              aria-label="Polish"
-              icon={isPolishing ? <Spinner size="xs" /> : <Sparkles size={15} />}
+              aria-label={isStory ? "Organize meeting notes" : "Clean up note"}
+              icon={isPolishing ? <Spinner size="xs" /> : <NotebookPen size={15} />}
               size="sm"
               variant="ghost"
-              color={showRaw && !isPolishing ? "purple.500" : "ink.700"}
-              bg={showRaw && !isPolishing ? "purple.50" : "transparent"}
+              color="ink.700"
+              isDisabled={isStory && !showRaw || isPolishing}
+              onClick={() => { if (showRaw) setPhase("polishing"); }}
             />
-            <IconButton aria-label="Meeting notes" icon={<NotebookPen size={15} />} size="sm" variant="ghost" color="ink.700" />
             <IconButton aria-label="Move" icon={<FolderInput size={15} />} size="sm" variant="ghost" color="ink.700" />
           </Flex>
 
@@ -448,13 +442,13 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
                   mt={4}
                   px={3}
                   py={2}
-                  bg="purple.50"
+                  bg="ink.50"
                   borderRadius="md"
                   w="fit-content"
                 >
-                  <Spinner size="xs" color="purple.500" />
-                  <Text fontSize="xs" color="purple.700" fontWeight="500">
-                    Polishing notes…
+                  <Spinner size="xs" color="ink.500" />
+                  <Text fontSize="xs" color="ink.700" fontWeight="500">
+                    Organizing meeting notes…
                   </Text>
                 </Flex>
               )}
@@ -497,8 +491,9 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
                       color="white"
                       _hover={{ bg: "ink.800" }}
                       px={3}
+                      onClick={() => setPhase("transcribing")}
                     >
-                      Stop &amp; Transcribe
+                      Stop recording
                     </Button>
                   </>
                 )}
@@ -518,11 +513,12 @@ export const AppPreview: FC<{ state?: PreviewState; height?: string | number }> 
                   py={2}
                   bg="ink.50"
                   borderRadius="md"
-                  maxH="64px"
+                  maxH="84px"
                   overflow="hidden"
                   border="1px solid"
                   borderColor="ink.100"
                 >
+                  <Text fontSize="10px" color="ink.500" mb={0.5}>Live draft</Text>
                   <Text fontSize="xs" color="ink.600" fontStyle="italic" lineHeight={1.5} noOfLines={2}>
                     {LIVE_PREVIEW_PREFIX}{livePreviewStreamed}
                   </Text>

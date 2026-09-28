@@ -1,25 +1,25 @@
 import { type FC } from "react";
 import { Box, Container, Grid, Heading, Text, VStack, HStack, Flex } from "@chakra-ui/react";
-import { Mic, Sparkles, Search, FolderInput } from "lucide-react";
+import { Mic, NotebookPen, Search, FolderInput } from "lucide-react";
 import { AppPreview } from "./AppPreview";
 
 const ITEMS = [
   {
     icon: Mic,
     title: "Transcribe meetings live",
-    desc: "Local Whisper, real-time chunks under one second.",
+    desc: "Live drafts while you talk, finalized locally with Whisper.",
     color: "red",
   },
   {
-    icon: Sparkles,
-    title: "Summarize as meeting notes",
-    desc: "One-click cleanup with the LLM of your choice.",
+    icon: NotebookPen,
+    title: "Organize meeting notes",
+    desc: "Turn rough notes into decisions and next steps.",
     color: "purple",
   },
   {
     icon: Search,
     title: "Query your docs",
-    desc: "Vector search across all your notes — fully local.",
+    desc: "Ask questions across a project, with links back to your notes.",
     color: "blue",
   },
   {

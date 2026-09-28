@@ -31,7 +31,7 @@ const QA = [
   },
   {
     q: "What language models does Platypus currently support?",
-    a: "OpenAI GPT-5.4, Anthropic Claude Sonnet 4.6 and Opus 4.6, Google Gemini 3 Pro, and any local model via Ollama or a compatible endpoint. Bring your own API key — you only pay your provider directly.",
+    a: "OpenAI GPT-6 Astra, Sol and Luna, Anthropic Claude Sonnet 5, Opus 5.5 and Haiku 4.5, Google Gemini 3.8 Flash and 3.1 Pro, and any local model via Ollama or a compatible endpoint. Bring your own API key — you only pay your provider directly.",
   },
 ];
 
