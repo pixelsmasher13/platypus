@@ -1,0 +1,41 @@
+name: Windows build
+
+# macOS releases are built, signed, and notarized locally with scripts/build-mac.sh.
+# This builds the Windows installers for an existing release tag and attaches them.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach installers to (for example v0.3.1)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # CMake and LLVM (libclang for whisper-rs-sys bindgen) ship with the runner image.
+      - run: npm run tauri build
+      - name: Attach installers to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.tag }}" \
+            src-tauri/target/release/bundle/nsis/*.exe \
+            src-tauri/target/release/bundle/msi/*.msi \
+            --clobber
