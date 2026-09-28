@@ -181,7 +181,7 @@ pub async fn retranscribe_recording(app_handle: AppHandle, id: String) -> Result
                 let samples = platypus_notes::audio_processor::resample(chunk, rate, 16000).map_err(|e| e.to_string())?;
                 engine.transcribe_source_with_context(&samples, prompt).map_err(|e| e.to_string())
             })?;
-            return Ok((transcript.text(), transcript.segments));
+            return Ok((transcript.text(), transcript.visible_segments()));
         }
         let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
         let rate = reader.spec().sample_rate;

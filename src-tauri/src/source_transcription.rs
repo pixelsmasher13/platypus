@@ -137,16 +137,23 @@ impl SourceTranscript {
             .join(" ");
         crate::transcription_context::transcription_prompt("", &text)
     }
+    /// Committed turns without speaker echo; `segments` keeps the raw decode.
+    pub fn visible_segments(&self) -> Vec<TranscriptSegment> {
+        without_echo(&self.segments, &self.segments)
+    }
     pub fn text(&self) -> String {
-        format_segments(&self.segments)
+        format_segments(&self.visible_segments())
     }
     pub fn update(&self, is_final: bool) -> serde_json::Value {
-        let committed = self.text();
         let drafts: Vec<_> = if is_final {
             vec![]
         } else {
             self.drafts.iter().flatten().cloned().collect()
         };
+        let heard: Vec<_> = self.segments.iter().chain(&drafts).cloned().collect();
+        let segments = without_echo(&self.segments, &heard);
+        let drafts = without_echo(&drafts, &heard);
+        let committed = format_segments(&segments);
         let draft = format_segments(&drafts);
         let text = [committed.as_str(), draft.as_str()]
             .into_iter()
@@ -156,9 +163,90 @@ impl SourceTranscript {
         serde_json::json!({
             "text": text,
             "committed_text": committed, "draft_text": draft, "is_final": is_final,
-            "segments": self.segments, "draft_segments": drafts,
+            "segments": segments, "draft_segments": drafts,
         })
     }
+}
+
+// Speaker playback leaks into the microphone, so remote speech is decoded on
+// both channels. Microphone words that repeat word pairs from nearby meeting
+// audio are echo. A run of other words long enough to be real speech (not a
+// misheard echo word) is the user's own and is kept verbatim.
+const ECHO_WINDOW_MS: u64 = 2000;
+const MIN_OWN_WORDS: usize = 6;
+
+pub fn without_echo(
+    segments: &[TranscriptSegment],
+    reference: &[TranscriptSegment],
+) -> Vec<TranscriptSegment> {
+    segments
+        .iter()
+        .filter_map(|segment| {
+            if segment.source != AudioSource::Microphone {
+                return Some(segment.clone());
+            }
+            let heard: Vec<_> = reference
+                .iter()
+                .filter(|other| {
+                    other.source == AudioSource::System
+                        && other.start_ms < segment.end_ms + ECHO_WINDOW_MS
+                        && other.end_ms + ECHO_WINDOW_MS > segment.start_ms
+                })
+                .flat_map(|other| words(&other.text))
+                .map(|(_, key)| key)
+                .collect();
+            let pairs: std::collections::HashSet<_> = heard.windows(2).collect();
+            let spoken = words(&segment.text);
+            let keys: Vec<_> = spoken.iter().map(|(_, key)| key.clone()).collect();
+            let mut echo = vec![false; spoken.len()];
+            for (i, pair) in keys.windows(2).enumerate() {
+                if pairs.contains(pair) {
+                    echo[i] = true;
+                    echo[i + 1] = true;
+                }
+            }
+            // A reply may reuse a pair of the question's words; echo repeats more.
+            let runs = flag_runs(&echo);
+            if !runs.iter().any(|&(start, end, is_echo)| is_echo && end - start >= 3) {
+                return Some(segment.clone());
+            }
+            // One shared pair inside a longer sentence is coincidence ("of the").
+            let own = |run: Option<&(usize, usize, bool)>| {
+                run.map_or(true, |&(start, end, is_echo)| !is_echo && end - start >= MIN_OWN_WORDS)
+            };
+            for (n, &(start, end, is_echo)) in runs.iter().enumerate() {
+                if is_echo && end - start == 2
+                    && own(n.checked_sub(1).map(|p| &runs[p])) && own(runs.get(n + 1))
+                {
+                    echo[start..end].fill(false);
+                }
+            }
+            let mut kept = Vec::new();
+            for (start, end, is_echo) in flag_runs(&echo) {
+                if !is_echo && end - start >= MIN_OWN_WORDS {
+                    kept.push(spoken[start..end].iter().map(|(word, _)| *word).collect::<Vec<_>>().join(" "));
+                }
+            }
+            (!kept.is_empty()).then(|| TranscriptSegment { text: kept.join(" … "), ..segment.clone() })
+        })
+        .collect()
+}
+fn words(text: &str) -> Vec<(&str, String)> {
+    text.split_whitespace()
+        .map(|word| (word, word.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>()))
+        .filter(|(_, key)| !key.is_empty())
+        .collect()
+}
+fn flag_runs(flags: &[bool]) -> Vec<(usize, usize, bool)> {
+    let mut runs = Vec::new();
+    let mut start = 0;
+    for end in 1..=flags.len() {
+        if end == flags.len() || flags[end] != flags[start] {
+            runs.push((start, end, flags[start]));
+            start = end;
+        }
+    }
+    runs
 }
 pub fn format_segments(segments: &[TranscriptSegment]) -> String {
     segments
@@ -279,6 +367,56 @@ mod tests {
         transcript.commit(&remote, 16000, ". . .");
         assert_eq!(transcript.segments.len(), 2);
         assert_eq!(transcript.update(false)["draft_text"], "");
+    }
+    fn turn(source: AudioSource, start_ms: u64, end_ms: u64, text: &str) -> TranscriptSegment {
+        TranscriptSegment { source, start_ms, end_ms, text: text.into() }
+    }
+    #[test]
+    fn speaker_echo_is_removed_but_own_speech_is_kept_verbatim() {
+        let remote = turn(AudioSource::System, 200, 9000,
+            "If it were to reverse quickly, change positioning to get on sides quickly. I'm not trying to predict anything.");
+        // The microphone hears the speakers, mishears a few words, then the user talks.
+        let mic = turn(AudioSource::Microphone, 0, 20000,
+            "we could if it were to reverse quickly sort of change positioning to get on sides quickly uh and so i'm not trying to predict anything yeah i mean just generally speaking um, Taylor, there's been a lot of dispersion");
+        let segments = vec![mic.clone(), remote.clone()];
+        let visible = without_echo(&segments, &segments);
+        assert_eq!(visible[0].text, "yeah i mean just generally speaking um, Taylor, there's been a lot of dispersion");
+        assert_eq!((visible[0].start_ms, visible[1].clone()), (0, remote.clone()));
+        // Pure echo disappears; identical words said well outside the window stay.
+        let echo = turn(AudioSource::Microphone, 0, 9000, "if it were to reverse quickly change positioning");
+        let later = turn(AudioSource::Microphone, 60000, 62000, "If it were to reverse quickly?");
+        let visible = without_echo(&[echo, remote.clone(), later.clone()], &[remote.clone()]);
+        assert_eq!(visible, vec![remote.clone(), later]);
+    }
+    #[test]
+    fn replies_that_reuse_the_question_words_are_not_echo() {
+        let question = turn(AudioSource::System, 0, 2000, "Can you send me the deck? It's pretty much a small subset of the winners.");
+        let reply = turn(AudioSource::Microphone, 2500, 4000, "Yeah, I'll send the deck tonight.");
+        // A shared pair inside a longer sentence is coincidence, not a hole to cut.
+        let sentence = turn(AudioSource::Microphone, 2500, 20000,
+            "that is a small subset. And now the market caps are so large that a few of the names, I mean, AMD is a trillion dollars");
+        let visible = without_echo(&[question.clone(), reply.clone(), sentence], &[question]);
+        assert_eq!(visible[1], reply);
+        assert_eq!(visible[2].text, "And now the market caps are so large that a few of the names, I mean, AMD is a trillion dollars");
+    }
+    #[test]
+    fn live_updates_and_saved_segments_hide_echo_including_draft_echo() {
+        let rate = 16000;
+        let chunk = |source, start_sample, seconds: usize| SourceChunk {
+            source,
+            audio: TimedChunk { start_sample, samples: vec![0.1; rate * seconds] },
+        };
+        let mut transcript = SourceTranscript::default();
+        transcript.commit(&chunk(AudioSource::Microphone, 0, 5), rate as u32, "we should look at the rate cut period again");
+        transcript.revise(&chunk(AudioSource::System, 0, 5), rate as u32, "We should look at the rate cut period again.");
+        let update = transcript.update(false);
+        assert!(update["segments"].as_array().unwrap().is_empty());
+        assert_eq!(update["draft_text"], "Remote participants: We should look at the rate cut period again.");
+        transcript.commit(&chunk(AudioSource::System, 0, 5), rate as u32, "We should look at the rate cut period again.");
+        assert_eq!(transcript.text(), "Remote participants: We should look at the rate cut period again.");
+        assert_eq!(transcript.visible_segments().len(), 1);
+        // The raw decode remains the microphone's own prompt context.
+        assert_eq!(transcript.context(AudioSource::Microphone), "we should look at the rate cut period again");
     }
 }
 

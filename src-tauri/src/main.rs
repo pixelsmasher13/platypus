@@ -1145,7 +1145,7 @@ async fn realtime_source_transcription_loop(app_handle: AppHandle) -> Result<Str
             }
         }
     }
-    platypus_notes::recording_audio::save_transcript_segments(&root, &id, &transcript.segments)?;
+    platypus_notes::recording_audio::save_transcript_segments(&root, &id, &transcript.visible_segments())?;
     Ok(transcript.text())
 }
 
