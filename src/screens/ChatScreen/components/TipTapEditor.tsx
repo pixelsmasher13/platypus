@@ -561,7 +561,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     setMeetingSources(null);
     const requestId = ++meetingRequestRef.current;
     const draft: GeneratedNoteDraft = {
-      title: `${documentTitle || "Untitled"} — Meeting notes`,
+      title: `${documentTitle || "Untitled"} — Meeting recap`,
       sourceTitle: documentTitle || "Untitled",
       projectId: documentProject?.id,
       markdown: "",
@@ -580,7 +580,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       if (meetingRequestRef.current !== requestId) return;
       setMeetingDraft(null);
       setMeetingSources(sources);
-      toast({ title: "Couldn't generate meeting notes", description: String(error), status: "error", isClosable: true });
+      toast({ title: "Couldn't create the meeting recap", description: String(error), status: "error", isClosable: true });
     } finally {
       if (meetingRequestRef.current === requestId) setIsSummarizing(false);
     }
@@ -602,7 +602,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     invoke("vectorize_document_chunks", { documentId: id }).catch(error => console.log("Indexing skipped:", error));
     refreshProjects();
     closeMeetingDraft();
-    toast({ title: "Meeting notes saved", description: "Saved as a separate note in the source project. Your original note is unchanged.", status: "success", isClosable: true });
+    toast({ title: "Meeting recap saved", description: "Saved as a separate note in the source project. Your original note is unchanged.", status: "success", isClosable: true });
   };
 
   const handleDraftFollowUpEmail = async () => {
@@ -778,9 +778,9 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
               </Tooltip>
 
               {/* Clean up or organize note */}
-              <Tooltip label={hasMeetingTranscript ? "Organize meeting notes" : "Clean up note"}>
+              <Tooltip label={hasMeetingTranscript ? "Create meeting recap" : "Clean up note"}>
                 <IconButton
-                  aria-label={hasMeetingTranscript ? "Organize meeting notes" : "Clean up note"}
+                  aria-label={hasMeetingTranscript ? "Create meeting recap" : "Clean up note"}
                   icon={isCleaningUp ? <Spinner size="xs" /> : <NotebookPen size={16} />}
                   size="sm"
                   variant="ghost"
@@ -789,7 +789,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 />
               </Tooltip>
 
-              {/* Generate dropdown: meeting notes, slides, podcast (coming soon) */}
+              {/* Generate dropdown: meeting recap, slides, podcast (coming soon) */}
               <Menu placement="bottom-end" isLazy>
                 <Tooltip label="Generate from this note">
                   <MenuButton
@@ -806,7 +806,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                     icon={<NotebookPen size={14} />}
                     onClick={handleSummarizeAsMeeting}
                   >
-                    Organize meeting notes
+                    Create meeting recap
                   </MenuItem>
                   <MenuItem
                     icon={<Mail size={14} />}
@@ -979,7 +979,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
               '.ProseMirror [data-turn-time]': { ml: 2, fontWeight: 'normal', color: 'gray.400' },
               '.ProseMirror section[data-transcript]': {
                 borderLeft: '3px solid', borderColor: 'teal.200', bg: 'gray.50',
-                p: 4, my: 4, maxH: '320px', overflowY: 'auto',
+                p: 4, my: 4, maxH: '70vh', overflowY: 'auto',
 
               },
               ".ProseMirror ul, .ProseMirror ol": {

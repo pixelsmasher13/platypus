@@ -12,9 +12,9 @@ export function MeetingSourcesModal({ initial, onClose, onGenerate }: {
   const hasTranscript = !!sources.transcript.trim();
   return <Modal isOpen onClose={onClose} size="3xl" scrollBehavior="inside" closeOnOverlayClick={false}>
     <ModalOverlay /><ModalContent>
-      <ModalHeader pb={2}>Organize meeting notes</ModalHeader><ModalCloseButton />
+      <ModalHeader pb={2}>Create meeting recap</ModalHeader><ModalCloseButton />
       <ModalBody>
-        <Text fontSize="sm" color="gray.600" mb={5}>Turn your rough notes and transcript into clear meeting notes, with key details and next steps.</Text>
+        <Text fontSize="sm" color="gray.600" mb={5}>Turn your rough notes and transcript into a recap of what was discussed, in order, with any decisions and next steps.</Text>
         <FormControl mb={5}>
           <FormLabel fontSize="sm">Your rough notes</FormLabel>
           <Textarea aria-label="Your rough notes" value={sources.notes} minH="140px" placeholder="The points you cared about, questions, or quick bullets…" onChange={event => setSources({ ...sources, notes: event.target.value })} />
@@ -26,7 +26,7 @@ export function MeetingSourcesModal({ initial, onClose, onGenerate }: {
         {!hasTranscript && <Alert status="info" fontSize="sm" borderRadius="md"><AlertIcon />Without a transcript, the draft can only use the details in your notes. If this is an older transcript-only note, move its text into the transcript field.</Alert>}
         {!hasNotes && hasTranscript && <Text fontSize="sm" color="gray.600">No rough notes yet. We’ll organize the important points from the transcript.</Text>}
       </ModalBody>
-      <ModalFooter gap={2}><Button variant="ghost" onClick={onClose}>Cancel</Button><Button colorScheme="teal" isDisabled={!hasNotes && !hasTranscript} onClick={() => onGenerate(sources)}>Organize meeting notes</Button></ModalFooter>
+      <ModalFooter gap={2}><Button variant="ghost" onClick={onClose}>Cancel</Button><Button colorScheme="teal" isDisabled={!hasNotes && !hasTranscript} onClick={() => onGenerate(sources)}>Create meeting recap</Button></ModalFooter>
     </ModalContent>
   </Modal>;
 }
