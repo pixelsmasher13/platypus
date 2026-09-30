@@ -1,7 +1,7 @@
 import { type FC } from "react";
 import { Box, Container, Heading, Text, VStack, Flex, HStack, Image, Link, Button } from "@chakra-ui/react";
 import { AppleIcon } from "./BrandIcons";
-import { DOWNLOAD_MAC } from "../links";
+import { useDownloadLinks } from "../links";
 
 const Section: FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <VStack align="flex-start" spacing={3}>
@@ -21,6 +21,7 @@ const Section: FC<{ title: string; children: React.ReactNode }> = ({ title, chil
 );
 
 export const Privacy: FC = () => {
+  const downloads = useDownloadLinks();
   return (
     <>
       {/* Nav */}
@@ -46,7 +47,7 @@ export const Privacy: FC = () => {
               </Link>
               <Button
                 as="a"
-                href={DOWNLOAD_MAC}
+                href={downloads.mac}
                 target="_blank"
                 rel="noopener noreferrer"
                 size="sm"

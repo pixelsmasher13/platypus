@@ -1,9 +1,10 @@
 import { type FC } from "react";
 import { Box, Container, Heading, Text, Button, HStack, VStack } from "@chakra-ui/react";
 import { AppleIcon, WindowsIcon } from "./BrandIcons";
-import { DOWNLOAD_MAC, DOWNLOAD_WINDOWS } from "../links";
+import { useDownloadLinks } from "../links";
 
 export const CTA: FC = () => {
+  const downloads = useDownloadLinks();
   return (
     <Box bg="white" py={{ base: 24, md: 32 }} borderTop="1px solid" borderColor="ink.100">
       <Container maxW="3xl" textAlign="center">
@@ -25,7 +26,7 @@ export const CTA: FC = () => {
           <HStack spacing={3} pt={3} flexWrap="wrap" justify="center">
             <Button
               as="a"
-              href={DOWNLOAD_MAC}
+              href={downloads.mac}
               target="_blank"
               rel="noopener noreferrer"
               size="lg"
@@ -42,7 +43,7 @@ export const CTA: FC = () => {
             </Button>
             <Button
               as="a"
-              href={DOWNLOAD_WINDOWS}
+              href={downloads.windows}
               target="_blank"
               rel="noopener noreferrer"
               size="lg"

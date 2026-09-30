@@ -2,9 +2,10 @@ import { type FC } from "react";
 import { Box, Container, Flex, Text, Heading, Button, HStack, Image, Link } from "@chakra-ui/react";
 import { AppleIcon, WindowsIcon, GitHubIcon } from "./BrandIcons";
 import { AppPreview } from "./AppPreview";
-import { GITHUB_URL, DOWNLOAD_MAC, DOWNLOAD_WINDOWS } from "../links";
+import { GITHUB_URL, useDownloadLinks } from "../links";
 
 export const Hero: FC = () => {
+  const downloads = useDownloadLinks();
   return (
     <Box
       bg="linear-gradient(180deg, #FAFAFA 0%, #FFFFFF 60%)"
@@ -44,7 +45,7 @@ export const Hero: FC = () => {
             </Link>
             <Button
               as="a"
-              href={DOWNLOAD_MAC}
+              href={downloads.mac}
               target="_blank"
               rel="noopener noreferrer"
               size="sm"
@@ -90,7 +91,7 @@ export const Hero: FC = () => {
           <HStack spacing={3} justify="center" flexWrap="wrap">
             <Button
               as="a"
-              href={DOWNLOAD_MAC}
+              href={downloads.mac}
               target="_blank"
               rel="noopener noreferrer"
               size="lg"
@@ -107,7 +108,7 @@ export const Hero: FC = () => {
             </Button>
             <Button
               as="a"
-              href={DOWNLOAD_WINDOWS}
+              href={downloads.windows}
               target="_blank"
               rel="noopener noreferrer"
               size="lg"

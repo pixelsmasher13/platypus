@@ -6,7 +6,7 @@
 
 An open-source desktop app for taking notes, transcribing meetings, and chatting with your documents. Your notes stay on your machine, and AI runs on whichever provider you connect — or fully local with Whisper and Ollama.
 
-[**Download for macOS**](https://the-platypus-app.s3.amazonaws.com/PlatypusNotes-latest.dmg) · [platypusnotes.com](https://platypusnotes.com) · MIT license
+[**Download for macOS or Windows**](https://github.com/pixelsmasher13/platypus/releases/latest) · [platypusnotes.com](https://platypusnotes.com) · MIT license
 
 <video src="https://github.com/user-attachments/assets/e034862a-0def-4b75-a133-d850d191d82a" autoplay loop muted playsinline></video>
 
