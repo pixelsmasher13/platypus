@@ -1,20 +1,18 @@
-import type { MeetingSources } from "../meetingSources";
+import type { GeneratedNoteDraft } from "../meetingRecapJobs";
 import { useState } from 'react';
-import { Box, Button, Flex, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Spinner, Tab, TabList, TabPanel, TabPanels, Tabs, Text, Textarea, useToast } from '@chakra-ui/react';
+import { Box, Button, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Tab, TabList, TabPanel, TabPanels, Tabs, Text, Textarea, useToast } from '@chakra-ui/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export type GeneratedNoteDraft = { title: string; markdown: string; sourceTitle: string; projectId?: number; sources?: MeetingSources };
-
 type Props = {
   draft: GeneratedNoteDraft | null;
-  isGenerating: boolean;
   onChange: (draft: GeneratedNoteDraft) => void;
   onClose: () => void;
+  onDiscard: () => void;
   onSave: () => Promise<void>;
 };
 
-export function GeneratedNoteModal({ draft, isGenerating, onChange, onClose, onSave }: Props) {
+export function GeneratedNoteModal({ draft, onChange, onClose, onDiscard, onSave }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const toast = useToast();
   const save = async () => {
@@ -31,7 +29,7 @@ export function GeneratedNoteModal({ draft, isGenerating, onChange, onClose, onS
       <ModalCloseButton isDisabled={isSaving} />
       <ModalBody>
         <Text fontSize="sm" color="gray.600" mb={4}>From {draft?.sourceTitle}. Your original note stays intact.{draft?.sources?.transcript.trim() ? " The transcript is kept with the new note." : ""}</Text>
-        {isGenerating ? <Flex align="center" gap={3} py={12} justify="center" role="status"><Spinner size="sm" /><Text>Writing your meeting recap…</Text></Flex> : draft && <>
+        {draft && <>
           <Input aria-label="Meeting recap title" value={draft.title} isDisabled={isSaving} mb={4} onChange={event => onChange({ ...draft, title: event.target.value })} />
           <Tabs colorScheme="teal" isLazy>
             <TabList><Tab>Preview</Tab><Tab>Edit</Tab>{draft.sources && <Tab>Sources</Tab>}</TabList>
@@ -49,8 +47,9 @@ export function GeneratedNoteModal({ draft, isGenerating, onChange, onClose, onS
         </>}
       </ModalBody>
       <ModalFooter gap={2}>
-        <Button variant="ghost" onClick={onClose} isDisabled={isSaving}>{isGenerating ? 'Cancel' : 'Discard draft'}</Button>
-        <Button colorScheme="teal" onClick={() => void save()} isLoading={isSaving} loadingText="Saving" isDisabled={isGenerating || !draft?.title.trim() || !draft?.markdown.trim()}>Save as new note</Button>
+        <Button variant="ghost" onClick={onDiscard} isDisabled={isSaving}>Discard draft</Button>
+        <Button variant="ghost" onClick={onClose} isDisabled={isSaving}>Review later</Button>
+        <Button colorScheme="teal" onClick={() => void save()} isLoading={isSaving} loadingText="Saving" isDisabled={!draft?.title.trim() || !draft?.markdown.trim()}>Save as new note</Button>
       </ModalFooter>
     </ModalContent>
   </Modal>;

@@ -36,16 +36,16 @@ import {
   Spinner,
 } from '@chakra-ui/react';
 import { Bold, Italic, List, Undo, Redo, FolderInput, Search, Mic, Square, NotebookPen, Presentation, Wand2, Headphones, Mail } from "lucide-react";
+import { NoteExportMenu } from "./NoteExportMenu";
 import { SlideGeneratorModal } from "./SlideGeneratorModal";
 import { usePresentations } from '../../../Providers/PresentationsProvider';
-import { GeneratedNoteModal, type GeneratedNoteDraft } from "./GeneratedNoteModal";
+import { useMeetingRecaps } from "../../../Providers/MeetingRecapsProvider";
 import { EmailDraftModal } from "./EmailDraftModal";
 import { PodcastGeneratorModal, type PodcastGenerationParams } from "./PodcastGeneratorModal";
 import { PodcastPlayerModal, type PodcastResult } from "./PodcastPlayerModal";
 import { useNotify } from "./notifications";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
-import { marked } from "marked";
 import { useProject } from "../../../state";
 import { projectService, UNASSIGNED_PROJECT_NAME } from "../../../data/project";
 import { useGlobalSettings } from "../../../Providers/SettingsProvider";
@@ -69,13 +69,8 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const [projectSearchTerm, setProjectSearchTerm] = useState("");
   const [polishSource, setPolishSource] = useState<PolishSource | null>(null);
   const isCleaningUp = !!polishSource;
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [meetingDraft, setMeetingDraft] = useState<GeneratedNoteDraft | null>(null);
   const [meetingSources, setMeetingSources] = useState<MeetingSources | null>(null);
-  const meetingRequestRef = useRef(0);
   const recordingDocumentRef = useRef(documentId);
-  const savedMeetingIdRef = useRef<number | null>(null);
-  useEffect(() => () => { meetingRequestRef.current += 1; }, []);
   const [isDraftingEmail, setIsDraftingEmail] = useState(false);
   const [emailDraft, setEmailDraft] = useState("");
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -113,6 +108,10 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const toast = useToast();
   const notify = useNotify();
   const presentations = usePresentations();
+  const recaps = useMeetingRecaps();
+  const recapJob = recaps.jobs.find(job => job.request.sourceId === documentId);
+  const isSummarizing = recapJob?.status === 'running';
+  const recapLabel = recapJob?.status === 'ready' ? 'Review meeting recap' : recapJob?.status === 'failed' ? 'Retry meeting recap' : isSummarizing ? 'Creating meeting recap…' : 'Create meeting recap';
   const { settings } = useGlobalSettings();
   
   // Add ref for debouncing editor updates to prevent excessive re-renders
@@ -258,9 +257,6 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     }
     setPolishSource(null);
     setMeetingSources(null);
-    setMeetingDraft(null);
-    setIsSummarizing(false);
-    meetingRequestRef.current += 1;
     hasPendingSaveRef.current = false;
     documentIdRef.current = documentId;
     latestContentRef.current = content;
@@ -516,6 +512,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
   const handleCleanUpWithAI = () => {
     if (!editor || isCleaningUp) return;
+    if (recapJob) { recaps.review(documentId); return; }
     if (hasMeetingTranscript) {
       setMeetingSources(extractMeetingSources(editor.getJSON()));
       return;
@@ -544,65 +541,16 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     toast({ title: "Note cleaned up", description: "Use Undo to restore the original.", status: "success", duration: 2500 });
   };
 
-  const closeMeetingDraft = () => {
-    meetingRequestRef.current += 1;
-    setMeetingDraft(null);
-    setIsSummarizing(false);
-    savedMeetingIdRef.current = null;
-  };
-
   const handleSummarizeAsMeeting = () => {
-    if (!editor || isSummarizing) return;
+    if (!editor) return;
+    if (recapJob) { recaps.review(documentId); return; }
     setMeetingSources(extractMeetingSources(editor.getJSON()));
   };
 
-  const enhanceMeeting = async (sources: MeetingSources) => {
-    if (isSummarizing || (!sources.notes.trim() && !sources.transcript.trim())) return;
+  const enhanceMeeting = (sources: MeetingSources) => {
+    if (!sources.notes.trim() && !sources.transcript.trim()) return;
+    recaps.start({ sourceId: documentId, sourceTitle: documentTitle || "Untitled", projectId: documentProject?.id, sources, ...getProviderAndModel() });
     setMeetingSources(null);
-    const requestId = ++meetingRequestRef.current;
-    const draft: GeneratedNoteDraft = {
-      title: `${documentTitle || "Untitled"} — Meeting recap`,
-      sourceTitle: documentTitle || "Untitled",
-      projectId: documentProject?.id,
-      markdown: "",
-      sources,
-    };
-    savedMeetingIdRef.current = null;
-    setMeetingDraft(draft);
-    setIsSummarizing(true);
-    try {
-      const { provider, modelId } = getProviderAndModel();
-      const markdown = await invoke<string>("summarize_as_meeting_notes", { plainText: sources.notes, transcript: sources.transcript, provider, modelId });
-      if (meetingRequestRef.current !== requestId) return;
-      if (!markdown.trim()) throw new Error("The model returned an empty draft. Please try again.");
-      setMeetingDraft({ ...draft, markdown });
-    } catch (error) {
-      if (meetingRequestRef.current !== requestId) return;
-      setMeetingDraft(null);
-      setMeetingSources(sources);
-      toast({ title: "Couldn't create the meeting recap", description: String(error), status: "error", isClosable: true });
-    } finally {
-      if (meetingRequestRef.current === requestId) setIsSummarizing(false);
-    }
-  };
-
-  const saveMeetingDraft = async () => {
-    if (!meetingDraft) return;
-    const html = await marked(meetingDraft.markdown) + (meetingDraft.sources?.transcript.trim()
-      ? transcriptHtml(meetingDraft.sources.transcript) + '<p></p>' : '');
-    // Reuse a partially created note when retrying a failed save.
-    if (savedMeetingIdRef.current === null) {
-      savedMeetingIdRef.current = meetingDraft.projectId !== undefined
-        ? await projectService.addBlankActivity(meetingDraft.projectId)
-        : await projectService.addUnassignedActivity();
-    }
-    const id = savedMeetingIdRef.current;
-    await invoke("update_project_activity_text", { activityId: id, text: html });
-    await projectService.updateActivityName(id, meetingDraft.title.trim());
-    invoke("vectorize_document_chunks", { documentId: id }).catch(error => console.log("Indexing skipped:", error));
-    refreshProjects();
-    closeMeetingDraft();
-    toast({ title: "Meeting recap saved", description: "Saved as a separate note in the source project. Your original note is unchanged.", status: "success", isClosable: true });
   };
 
   const handleDraftFollowUpEmail = async () => {
@@ -760,10 +708,12 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                 borderColor: "teal.400",
                 borderRadius: "0"
               }}
-              maxWidth="80%"
+              flex={1}
+              minW={0}
+              mr={3}
             />
             
-            <Flex alignItems="center" gap={2}>
+            <Flex alignItems="center" gap={2} flexShrink={0}>
               {/* Voice record into note */}
               <Tooltip label={isPreparingRecording ? "Preparing..." : isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : `Record into this note (${recordingSourceNames[recordingSource]})`}>
                 <IconButton
@@ -773,19 +723,19 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   variant="ghost"
                   onClick={isRecording ? stopNoteRecording : startNoteRecording}
                   color={isRecording ? "red.500" : undefined}
-                  isDisabled={isPreparingRecording || isProcessingRecording || isTranscribing || isCleaningUp || isSummarizing}
+                  isDisabled={isPreparingRecording || isProcessingRecording || isTranscribing || isCleaningUp}
                 />
               </Tooltip>
 
               {/* Clean up or organize note */}
-              <Tooltip label={hasMeetingTranscript ? "Create meeting recap" : "Clean up note"}>
+              <Tooltip label={recapJob || hasMeetingTranscript ? recapLabel : "Clean up note"}>
                 <IconButton
-                  aria-label={hasMeetingTranscript ? "Create meeting recap" : "Clean up note"}
-                  icon={isCleaningUp ? <Spinner size="xs" /> : <NotebookPen size={16} />}
+                  aria-label={recapJob || hasMeetingTranscript ? recapLabel : "Clean up note"}
+                  icon={isCleaningUp || isSummarizing ? <Spinner size="xs" /> : <NotebookPen size={16} />}
                   size="sm"
                   variant="ghost"
                   onClick={handleCleanUpWithAI}
-                  isDisabled={isCleaningUp || isSummarizing || isRecording || isTranscribing}
+                  isDisabled={isCleaningUp || isRecording || isTranscribing}
                 />
               </Tooltip>
 
@@ -798,7 +748,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                     icon={isSummarizing || isDraftingEmail ? <Spinner size="xs" /> : <Wand2 size={16} />}
                     size="sm"
                     variant="ghost"
-                    isDisabled={isCleaningUp || isSummarizing || isDraftingEmail || isRecording || isTranscribing}
+                    isDisabled={isCleaningUp || isDraftingEmail || isRecording || isTranscribing}
                   />
                 </Tooltip>
                 <MenuList minWidth="220px">
@@ -806,7 +756,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                     icon={<NotebookPen size={14} />}
                     onClick={handleSummarizeAsMeeting}
                   >
-                    Create meeting recap
+                    {recapLabel}
                   </MenuItem>
                   <MenuItem
                     icon={<Mail size={14} />}
@@ -833,6 +783,8 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
                   </MenuItem>
                 </MenuList>
               </Menu>
+
+              <NoteExportMenu key={documentId} disabled={!editor} getSnapshot={() => ({ title: documentTitle, document: editor?.getJSON() || { type: 'doc', content: [] } })} />
 
               {/* Project assignment/reassignment dropdown - show for all documents */}
               <Menu
@@ -1095,13 +1047,6 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
             onClose={() => setMeetingSources(null)}
             onGenerate={sources => void enhanceMeeting(sources)}
           />}
-          <GeneratedNoteModal
-            draft={meetingDraft}
-            isGenerating={isSummarizing}
-            onChange={setMeetingDraft}
-            onClose={closeMeetingDraft}
-            onSave={saveMeetingDraft}
-          />
           <EmailDraftModal
             isOpen={isEmailModalOpen}
             onClose={() => setIsEmailModalOpen(false)}

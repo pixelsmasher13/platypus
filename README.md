@@ -16,6 +16,7 @@ An open-source desktop app for taking notes, transcribing meetings, and chatting
 - **Organize meeting notes** — combine your rough notes with the transcript into notes built around what you flagged: decisions, next steps, and open questions
 - **Clean up any note** — tidy, shorten, or reorganize; compare with the original before applying, and undo in one step
 - **Organize notes and documents** — rich editor with PDF/DOCX/TXT/Markdown and URL import, project grouping, and content search you can browse from the keyboard
+- **Take notes anywhere** — copy formatted notes into an email or document, or export Markdown. Meeting recaps omit the transcript by default, with an option to include it.
 - **Chat with everything you've written** — per-project vector search with Claude, OpenAI, Gemini, or any local Ollama model. Answers are grounded in your notes with inline `[n]` citations you can click to jump to the source passage, and each project greets you with suggested questions generated from its content
 - **Generate from any note** — a PowerPoint deck with editable charts and tables, a follow-up email, or an audio podcast (via ElevenLabs). Decks build in the background while you keep working
 

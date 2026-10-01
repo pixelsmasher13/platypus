@@ -14,7 +14,7 @@ export function MeetingSourcesModal({ initial, onClose, onGenerate }: {
     <ModalOverlay /><ModalContent>
       <ModalHeader pb={2}>Create meeting recap</ModalHeader><ModalCloseButton />
       <ModalBody>
-        <Text fontSize="sm" color="gray.600" mb={5}>Turn your rough notes and transcript into a recap of what was discussed, in order, with any decisions and next steps.</Text>
+        <Text fontSize="sm" color="gray.600" mb={5}>Turn your rough notes and transcript into a recap of what was discussed, in order, with any decisions and next steps. Generation runs in the background — we’ll let you know when it’s ready.</Text>
         <FormControl mb={5}>
           <FormLabel fontSize="sm">Your rough notes</FormLabel>
           <Textarea aria-label="Your rough notes" value={sources.notes} minH="140px" placeholder="The points you cared about, questions, or quick bullets…" onChange={event => setSources({ ...sources, notes: event.target.value })} />

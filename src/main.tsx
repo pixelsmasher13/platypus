@@ -11,6 +11,7 @@ import { App } from "./App";
 import { MeetingPopup } from "./components/MeetingPopup";
 import { theme } from "./theme";
 import { SettingsProvider } from "./Providers/SettingsProvider";
+import { MeetingRecapsProvider } from "./Providers/MeetingRecapsProvider";
 import { PresentationsProvider } from "./Providers/PresentationsProvider";
 
 const queryClient = new QueryClient();
@@ -48,7 +49,7 @@ if (isPopupWindow) {
         <ThemeProvider theme={theme}>
           <ChakraProvider theme={chakraTheme}>
             <SettingsProvider>
-              <PresentationsProvider><App /></PresentationsProvider>
+              <PresentationsProvider><MeetingRecapsProvider><App /></MeetingRecapsProvider></PresentationsProvider>
             </SettingsProvider>
           </ChakraProvider>
         </ThemeProvider>

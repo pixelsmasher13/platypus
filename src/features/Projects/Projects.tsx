@@ -48,7 +48,7 @@ import {
   FilePlus,
   FileUp,
   FolderPlus,
-  Mic,
+  Circle,
   Square,
   ClipboardPaste,
   Link as LinkIcon,
@@ -1145,7 +1145,8 @@ const ProjectSelector: FC<{
         {!isRecording && !isTranscribing && !isDownloadingModel && (
           <Flex align="center" gap={1}>
           <Button
-            leftIcon={isPreparingRecording ? undefined : <Mic size={18} />}
+            leftIcon={isPreparingRecording ? undefined : <Circle size={9} fill="#C66B65" strokeWidth={0} aria-hidden="true" />}
+            iconSpacing={2.5}
             onClick={startRecording}
             borderRadius="full"
             size="md"

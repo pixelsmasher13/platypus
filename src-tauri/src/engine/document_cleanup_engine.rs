@@ -31,7 +31,7 @@ Fidelity rules (apply in every style):
 
 Return ONLY the edited markdown. No commentary, preamble, or enclosing code fence."##;
 
-const MEETING_SUMMARY_SYSTEM_PROMPT: &str = r##"Write a recap of a meeting from rough notes and a transcript. The input is a JSON object with two separately labeled sources: rough_notes and transcript. Either source may be empty.
+const MEETING_SUMMARY_SYSTEM_PROMPT: &str = r##"Turn rough notes and a transcript into compact meeting notes someone would write for themselves and share with colleagues. The input is a JSON object with two separately labeled sources: rough_notes and transcript. Either source may be empty.
 
 Sources:
 - The transcript is the record of what was discussed and in what order. The rough notes show what the person cared about: give those points more detail, expand their shorthand with evidence from the transcript, and include points the transcript missed.
@@ -41,14 +41,29 @@ Sources:
 
 Structure:
 - Follow the meeting in order. Write a numbered list of the topics as they came up, each starting with a short bold heading followed by a few compact nested bullets: what was said, the reasoning, examples, and numbers. When a topic comes back later, add it to its first entry instead of repeating it.
-- After the topics, add **Decisions**, **Next steps**, or **Open questions** only when the meeting actually produced them. Include an owner or deadline only when one was stated. Do not turn a suggestion, a topic mention, or an open question into a commitment.
+- After the topics, add **Decisions**, **Next steps**, or **Open questions** only when the meeting actually produced them and a separate section helps. Avoid repeating the same point in both a topic and a closing section. Include an owner or deadline only when one was stated. Do not turn a suggestion, a topic mention, or an open question into a commitment.
 - No title, introduction, overall summary, or conclusion. Keep short meetings short.
 
 Voice:
-- Write the way a colleague would recap the meeting for someone who missed it: plain, direct sentences such as "Discussed…", "Argued that…", "Asked whether…".
-- Carry uncertainty in the verb (suggested, floated, estimated, asked whether) instead of adding disclaimers such as "this was not a forecast" or "not a decision". Do not point out what was left unreconciled or undecided unless it matters for what happens next.
-- Be selective: omit greetings, filler, false starts, and repetition. Keep exact numbers, dates, names, tickers, and technical terms; do not guess at words the transcript garbled.
+- Write the substance directly, not a narration of the conversation. Avoid reporting phrases such as "discussed", "described", "noted", "cited", "argued that", "indicated an intention", and "requested". Prefer compact bullets and natural sentence fragments; keep verbs that express the actual action or meaning.
+- Use plain wording and contractions. Name the subject when needed for clarity; omit empty lead-ins. Use familiar shorthand only when unambiguous, never invent abbreviations or make the reader decode compressed prose.
+- Preserve uncertainty with short qualifiers such as "possibly", "likely", "~", "consider", "plan to", and "if". Keep opinions as opinions, plans as plans, and completed actions as completed actions. Use a direct question for an open question. Preserve meaningful disagreement and attribution without adding conversational scaffolding.
+- Be selective: omit greetings, filler, false starts, and repetition. Tighten wording without dropping distinct substantive topics, reasoning, caveats, or follow-ups. Keep exact numbers, dates, names, tickers, and technical terms; do not guess at words the transcript garbled.
 - Preserve the original language. No invented context, external facts, or unsupported conclusions.
+
+Editing examples (style only; never add these facts to the output):
+- Wordy: "Removal from Goldman's conviction list was also cited, but argued that it did not explain the full decline."
+  Notes: "Removed from Goldman's conviction list, but unlikely to explain the full decline."
+- Wordy: "Indicated an intention to delay the launch until Friday if testing was not complete."
+  Notes: "Plan to delay launch until Friday if testing isn't complete."
+- Wordy: "Floated whether the slowdown might be related to the recent migration."
+  Notes: "Slowdown possibly tied to the recent migration."
+- Wordy: "Asked whether the existing vendor could support the additional volume."
+  Notes: "Can the existing vendor handle the extra volume?"
+- Wordy: "Maya agreed to send the revised draft by Thursday."
+  Notes: "Maya — revised draft by Thursday."
+- Wordy: "Alex argued for launching Friday, while Maya preferred waiting for the test results."
+  Notes: "Alex: launch Friday. Maya: wait for test results."
 
 Return ONLY markdown. No tables, commentary, enclosing code fences, or made-up citations."##;
 
