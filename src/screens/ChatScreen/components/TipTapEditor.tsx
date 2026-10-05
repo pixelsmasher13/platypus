@@ -11,6 +11,7 @@ import React from "react";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { closeHistory } from '@tiptap/pm/history';
+import { DOMParser as EditorDOMParser } from '@tiptap/pm/model';
 import { PolishNoteModal, type PolishSource } from './PolishNoteModal';
 import TextStyle from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
@@ -40,6 +41,8 @@ import { NoteExportMenu } from "./NoteExportMenu";
 import { SlideGeneratorModal } from "./SlideGeneratorModal";
 import { usePresentations } from '../../../Providers/PresentationsProvider';
 import { useMeetingRecaps } from "../../../Providers/MeetingRecapsProvider";
+import { savedTranscriptHtml } from '../meetingNoteContent';
+import { enqueueNoteSave } from '../noteSaveQueue';
 import { EmailDraftModal } from "./EmailDraftModal";
 import { PodcastGeneratorModal, type PodcastGenerationParams } from "./PodcastGeneratorModal";
 import { PodcastPlayerModal, type PodcastResult } from "./PodcastPlayerModal";
@@ -54,7 +57,7 @@ type TipTapEditorProps = {
   content: string;
   title: string;
   documentId: number;
-  onSave: (content: string, title: string, documentId: number) => void;
+  onSave: (content: string, title: string, documentId: number) => Promise<void>;
 };
 
 export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
@@ -109,7 +112,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const notify = useNotify();
   const presentations = usePresentations();
   const recaps = useMeetingRecaps();
-  const recapJob = recaps.jobs.find(job => job.request.sourceId === documentId);
+  const recapJob = recaps.jobs.find(job => job.request.sourceId === documentId && job.status !== 'saved');
   const isSummarizing = recapJob?.status === 'running';
   const recapLabel = recapJob?.status === 'ready' ? 'Review meeting recap' : recapJob?.status === 'failed' ? 'Retry meeting recap' : isSummarizing ? 'Creating meeting recap…' : 'Create meeting recap';
   const { settings } = useGlobalSettings();
@@ -141,6 +144,7 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
   const { 
     getVisibleProjects, 
     getActivityProject,
+    getActivityName,
     moveActivity,
     refreshProjects
   } = useProject();
@@ -177,20 +181,19 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
 
   // Debounced update handler to prevent excessive state updates
   const debouncedUpdateHandler = useCallback(({ editor }: { editor: any }) => {
+    const currentHtml = editor.getHTML();
+    // Capture immediately: navigation or a generation result may arrive before
+    // the UI debounce, and must see the user's most recent keystroke.
+    latestContentRef.current = currentHtml;
+    hasPendingSaveRef.current = true;
+    scheduleAutoSave();
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current);
     }
 
     updateTimeoutRef.current = setTimeout(() => {
-      const currentHtml = editor.getHTML();
       const changed = currentHtml !== content || latestTitleRef.current !== title;
       setHasChanges(changed);
-
-      // Undo may return to the original prop value while a newer save is pending.
-      // Always replace the pending snapshot with the current editor contents.
-      latestContentRef.current = currentHtml;
-      hasPendingSaveRef.current = true;
-      scheduleAutoSave();
     }, 250);
   }, [content, title, scheduleAutoSave]);
   
@@ -208,6 +211,33 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     editable: true,
     onUpdate: debouncedUpdateHandler,
   });
+
+  // Apply to the live editor only if the exact source is still current. Clear
+  // pending raw-note autosaves before replacement so they cannot undo the result.
+  useEffect(() => {
+    if (!editor) return;
+    return recaps.registerEditor(documentId, async (request, html, newTitle, replace) => {
+      if (documentIdRef.current !== request.sourceId) return false;
+      const sourceDocument = new DOMParser().parseFromString(request.sourceHtml, 'text/html');
+      const expectedDocument = EditorDOMParser.fromSchema(editor.schema).parse(sourceDocument.body);
+      if (!replace && (!editor.state.doc.eq(expectedDocument) || latestTitleRef.current !== request.sourceTitle)) return false;
+      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+      editor.view.dispatch(closeHistory(editor.state.tr));
+      editor.chain().insertContentAt({ from: 0, to: editor.state.doc.content.size }, html).run();
+      editor.view.dispatch(closeHistory(editor.state.tr));
+      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+      const savedHtml = editor.getHTML();
+      latestContentRef.current = savedHtml;
+      latestTitleRef.current = newTitle;
+      setDocumentTitle(newTitle);
+      hasPendingSaveRef.current = false;
+      setHasChanges(false);
+      await onSave(savedHtml, newTitle, request.sourceId);
+      return true;
+    });
+  }, [editor, documentId, recaps.registerEditor, onSave]);
 
   const hasMeetingTranscript = !!editor && !!extractMeetingSources(editor.getJSON()).transcript.trim();
 
@@ -416,20 +446,21 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
       if (editor && transcription.trim()) {
         if (recordedDocumentId !== documentIdRef.current) {
           // Keep a recording on its source note if navigation occurred during capture.
-          await invoke('append_project_activity_text', { activityId: recordedDocumentId, text: transcriptHtml(transcription, recordingId, segments) + '<p></p>' });
+          await enqueueNoteSave(recordedDocumentId, () => invoke('append_project_activity_text', { activityId: recordedDocumentId, text: transcriptHtml(transcription, recordingId, segments) + '<p></p>' }));
           invoke('vectorize_document_chunks', { documentId: recordedDocumentId }).catch(() => {});
-          toast({ title: "Transcript saved to the recorded note", status: "success" });
+          const project = getActivityProject(recordedDocumentId);
+          if (project) {
+            const sourceHtml = await invoke<string>('get_app_project_activity_text', { projectId: project.id, activityId: recordedDocumentId });
+            const source = EditorDOMParser.fromSchema(editor.schema).parse(new DOMParser().parseFromString(sourceHtml, 'text/html').body);
+            recaps.start({ sourceId: recordedDocumentId, sourceTitle: getActivityName(recordedDocumentId), sourceHtml,
+              transcriptHtml: savedTranscriptHtml(sourceHtml), projectId: project.id,
+              sources: extractMeetingSources(source.toJSON()), ...getProviderAndModel() });
+          }
           return;
         }
         editor.commands.insertContentAt(editor.state.doc.content.size, [transcriptNode(transcription, recordingId, segments), { type: 'paragraph' }]);
 
-        // Trigger auto-save
-        latestContentRef.current = editor.getHTML();
-        hasPendingSaveRef.current = true;
-        scheduleAutoSave();
-        setHasChanges(true);
-
-        toast({ title: "Transcription added to note", status: "success", duration: 2000, isClosable: true, position: "bottom-right" });
+        await enhanceMeeting(extractMeetingSources(editor.getJSON()));
       }
     } catch (error) {
       console.error("Recording/transcription failed:", error);
@@ -547,10 +578,27 @@ export const TipTapEditor: FC<TipTapEditorProps> = React.memo(({
     setMeetingSources(extractMeetingSources(editor.getJSON()));
   };
 
-  const enhanceMeeting = (sources: MeetingSources) => {
-    if (!sources.notes.trim() && !sources.transcript.trim()) return;
-    recaps.start({ sourceId: documentId, sourceTitle: documentTitle || "Untitled", projectId: documentProject?.id, sources, ...getProviderAndModel() });
-    setMeetingSources(null);
+  const enhanceMeeting = async (sources: MeetingSources) => {
+    if (!editor || (!sources.notes.trim() && !sources.transcript.trim())) return;
+    const sourceHtml = editor.getHTML();
+    const sourceTitle = latestTitleRef.current;
+    const sourceId = documentIdRef.current;
+    const request = { sourceId, sourceTitle, sourceHtml, projectId: getActivityProject(sourceId)?.id, sources,
+      transcriptHtml: sources.transcript === extractMeetingSources(editor.getJSON()).transcript ? savedTranscriptHtml(sourceHtml) : undefined,
+      ...getProviderAndModel() };
+    // Save the source first. A failed model call must still leave a usable note.
+    if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
+    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+    latestContentRef.current = sourceHtml;
+    hasPendingSaveRef.current = false;
+    try {
+      await onSave(sourceHtml, sourceTitle, sourceId);
+      recaps.start(request);
+      setMeetingSources(null);
+    } catch (error) {
+      if (documentIdRef.current === sourceId) hasPendingSaveRef.current = true;
+      toast({ title: 'Could not save the meeting', description: String(error), status: 'error', isClosable: true });
+    }
   };
 
   const handleDraftFollowUpEmail = async () => {

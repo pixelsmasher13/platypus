@@ -171,6 +171,7 @@ async fn main() {
             prompt_for_accessibility_permissions,
             get_app_project_activity_text,
             update_project_activity_text,
+            save_meeting_notes,
             append_project_activity_text,
             vectorize_document_chunks,
             add_project_blank_activity,
@@ -652,9 +653,28 @@ fn update_project_activity_content(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn save_meeting_notes(app_handle: AppHandle, activity_id: i64, expected_text: String, expected_title: String, text: String, title: String) -> Result<bool, String> {
+    app_handle.db(|db| {
+        // Generation may finish after navigation, edits, or deletion. Compare and
+        // replace atomically so a stale result cannot overwrite the current note.
+        let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
+        if !platypus_notes::meeting_notes::save_if_unchanged(&tx, activity_id, &expected_text, &expected_title, &text, &title).map_err(|e| e.to_string())? {
+            return Ok(false);
+        }
+        if get_setting(&tx, "vectorization_enabled").map(|s| s.setting_value == "true").unwrap_or(false) {
+            let project_id = get_project_id_for_document(&tx, activity_id).map_err(|e| e.to_string())?;
+            let (_, plain_text) = get_activity_plain_text(&tx, activity_id).map_err(|e| e.to_string())?;
+            save_chunks_for_document(&tx, activity_id, project_id, &plain_text).map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
+    })
+}
+
+#[tauri::command]
 // Append a completed recording to its original note after navigation. The read
 // and write share the DB lock so newer persisted edits are never overwritten.
-#[tauri::command]
 fn append_project_activity_text(app_handle: AppHandle, activity_id: i64, text: String) -> Result<(), String> {
     app_handle.db(|db| {
         let existing: String = db.query_row(

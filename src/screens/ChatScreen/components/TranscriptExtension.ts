@@ -11,6 +11,10 @@ export const TranscriptExtension = Node.create({
     default: null,
     parseHTML: element => element.getAttribute('data-recording-id'),
     renderHTML: attributes => attributes.recordingId ? { 'data-recording-id': attributes.recordingId } : {},
+  }, collapsed: {
+    default: false,
+    parseHTML: element => element.getAttribute('data-collapsed') === 'true',
+    renderHTML: attributes => attributes.collapsed ? { 'data-collapsed': 'true' } : {},
   } }),
   addNodeView: () => ReactNodeViewRenderer(TranscriptView),
   group: 'block',

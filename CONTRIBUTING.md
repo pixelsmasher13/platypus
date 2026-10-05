@@ -38,6 +38,8 @@ The comparison prints JSON with each chunk's prompt and output, checks that cont
 
 The current 16-word/120-character history limit was checked against a 69-second earnings-call recording using Large v3 and identical audio chunks. It removed an inserted clause while retaining the introduction and final passage. A longer 64-word history lost the final passage; vocabulary hints corrected an acronym but dropped the operator's introduction. That is why only short finalized history is enabled. This is a regression fixture, not a general accuracy benchmark; names and clipped final words remain unresolved.
 
+For microphone + meeting capture, echo filtering must preserve complete microphone turns. Shared phrases are not evidence that the rest of a reply is disposable: short answers and negations matter. Only a full normalized match of at least six words, with at least 80% overlap of both capture intervals, is suppressed. Remote drafts cannot suppress committed speech, and identified duplicates are excluded from microphone prompt history. This is conservative text deduplication, not acoustic echo cancellation; uncertain leakage remains. The `source_transcription` regression tests cover overlapping replies, partial matches, short replies, timing, and draft/final behavior. Actual recognition quality still needs a recording with both local and remote speech.
+
 ### Presentation quality
 
 The [presentation quality guide](docs/presentation-quality.md) documents the live comparison and a CLI harness that uses the same generation and download code as the app. Inspect the rendered slides as well as the returned file: passing a format test alone does not demonstrate a useful presentation.

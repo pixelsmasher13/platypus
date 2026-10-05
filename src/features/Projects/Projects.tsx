@@ -2,6 +2,9 @@ import { RecordingRecovery, useRecordingOwner } from "../../components/Recording
 import { RecordingMeters, MeetingAudioPermissionNotice, useRecordingSource } from "../../components/RecordingControls";
 import { effectiveRecordingSource } from "../../components/recordingSource";
 import { transcriptHtml, type TranscriptSegment } from "../../screens/ChatScreen/meetingSources";
+import { useMeetingRecaps } from '../../Providers/MeetingRecapsProvider';
+import { temporaryMeetingTitle } from '../../screens/ChatScreen/meetingRecapJobs';
+import { getConfiguredModel } from '../../models/models';
 import { LiveTranscriptPreview, type LiveTranscriptUpdate } from "../../screens/ChatScreen/components/LiveTranscriptPreview";
 import { type FC, useState, useMemo, useRef, useEffect } from "react";
 import styled from "styled-components";
@@ -344,6 +347,7 @@ const ProjectSelector: FC<{
   
   const toast = useToast();
   const { settings } = useGlobalSettings();
+  const recaps = useMeetingRecaps();
 
   // Filter projects by name
   const filteredProjects = useMemo(() => {
@@ -627,8 +631,8 @@ const ProjectSelector: FC<{
 
       if (newActivityId) {
         if (recordingId) await invoke('attach_recording', { id: recordingId, noteId: newActivityId });
-        const date = new Date();
-        const documentName = `Voice Note ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+        const documentName = temporaryMeetingTitle();
+        const sourceHtml = transcriptHtml(transcription, recordingId, segments) + '<p></p>';
 
         // Update name and content in DB
         await invoke("update_project_activity_name", {
@@ -637,7 +641,7 @@ const ProjectSelector: FC<{
         });
         await invoke("update_project_activity_text", {
           activityId: newActivityId,
-          text: transcriptHtml(transcription, recordingId, segments) + '<p></p>',
+          text: sourceHtml,
         });
 
         // Refresh state so sidebar shows the correct name
@@ -650,15 +654,12 @@ const ProjectSelector: FC<{
         setRecordingTime(0);
         setLiveTranscript(null);
 
-        toast({
-          title: "Transcription complete",
-          description: "Voice note has been transcribed and saved successfully",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-
         onSelectActivity(newActivityId);
+        if (transcription.trim()) recaps.start({
+          sourceId: newActivityId, sourceTitle: documentName, sourceHtml,
+          transcriptHtml: sourceHtml, sources: { notes: '', transcript: transcription },
+          provider: settings.api_choice, modelId: getConfiguredModel(settings),
+        });
       }
     } catch (error) {
       console.error("Failed to record/transcribe:", error);

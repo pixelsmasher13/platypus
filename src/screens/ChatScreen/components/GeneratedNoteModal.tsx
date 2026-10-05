@@ -25,10 +25,10 @@ export function GeneratedNoteModal({ draft, onChange, onClose, onDiscard, onSave
   return <Modal isOpen={!!draft} onClose={onClose} size="3xl" scrollBehavior="inside" closeOnOverlayClick={false} closeOnEsc={!isSaving}>
     <ModalOverlay />
     <ModalContent>
-      <ModalHeader>Meeting recap draft</ModalHeader>
+      <ModalHeader>Review meeting notes</ModalHeader>
       <ModalCloseButton isDisabled={isSaving} />
       <ModalBody>
-        <Text fontSize="sm" color="gray.600" mb={4}>From {draft?.sourceTitle}. Your original note stays intact.{draft?.sources?.transcript.trim() ? " The transcript is kept with the new note." : ""}</Text>
+        <Text fontSize="sm" color="gray.600" mb={4}>This will replace the current content of {draft?.sourceTitle}, including edits made during generation. Review it first. The transcript stays available underneath the summary.</Text>
         {draft && <>
           <Input aria-label="Meeting recap title" value={draft.title} isDisabled={isSaving} mb={4} onChange={event => onChange({ ...draft, title: event.target.value })} />
           <Tabs colorScheme="teal" isLazy>
@@ -49,7 +49,7 @@ export function GeneratedNoteModal({ draft, onChange, onClose, onDiscard, onSave
       <ModalFooter gap={2}>
         <Button variant="ghost" onClick={onDiscard} isDisabled={isSaving}>Discard draft</Button>
         <Button variant="ghost" onClick={onClose} isDisabled={isSaving}>Review later</Button>
-        <Button colorScheme="teal" onClick={() => void save()} isLoading={isSaving} loadingText="Saving" isDisabled={!draft?.title.trim() || !draft?.markdown.trim()}>Save as new note</Button>
+        <Button colorScheme="teal" onClick={() => void save()} isLoading={isSaving} loadingText="Saving" isDisabled={!draft?.title.trim() || !draft?.markdown.trim()}>Replace meeting notes</Button>
       </ModalFooter>
     </ModalContent>
   </Modal>;

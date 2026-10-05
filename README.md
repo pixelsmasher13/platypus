@@ -13,7 +13,7 @@ An open-source desktop app for taking notes, transcribing meetings, and chatting
 ## What it does
 
 - **Capture meetings** — auto-detects Zoom and Teams calls and records your mic plus the meeting audio, no bot required; transcribes locally via Whisper with live drafts as people speak, or via OpenAI's API
-- **Organize meeting notes** — combine your rough notes with the transcript into notes built around what you flagged: decisions, next steps, and open questions
+- **Finish with meeting notes** — after recording, generate a descriptive title and organized notes in the background. One meeting in your library, with its transcript tucked underneath
 - **Clean up any note** — tidy, shorten, or reorganize; compare with the original before applying, and undo in one step
 - **Organize notes and documents** — rich editor with PDF/DOCX/TXT/Markdown and URL import, project grouping, and content search you can browse from the keyboard
 - **Take notes anywhere** — copy formatted notes into an email or document, or export Markdown. Meeting recaps omit the transcript by default, with an option to include it.
@@ -43,6 +43,8 @@ Data stays on disk in SQLite. In local transcription mode, audio never leaves yo
 **Transcribes on your machine.** Local Whisper shows live drafts as people talk, then swaps in a more accurate pass at each pause. It works offline after a one-time model download, and audio is deleted after transcription unless you choose to keep it. Prefer the cloud? Switch to OpenAI's API in Settings.
 
 **Know which side spoke.** Local mic + meeting transcription labels your microphone as **You** and system audio as **Remote participants**, with timestamps and editable labels. Everyone on each audio source shares its label; this does not identify individual remote speakers. Labels stay with the transcript even when audio is deleted.
+
+**Open the notes, not a wall of transcript.** When recording ends, your configured AI model organizes the meeting in the background and updates the same note with a content-based title. Titles you wrote yourself stay intact. The transcript is collapsed under **View transcript**, with its speaker labels and timestamps preserved. A bottom-right notification lets you know when the notes are ready. If you edit during generation, the result waits for review; if generation fails, the saved transcript stays available and you can retry. You can also generate meeting notes from an existing note with **Create meeting recap**.
 
 More in [how meeting audio capture works](docs/meeting-audio.md).
 

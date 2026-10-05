@@ -17,6 +17,7 @@ import styled from "styled-components";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { runChatTurn } from "./chatTurn";
+import { enqueueNoteSave } from './noteSaveQueue';
 import type { StoredMessage, Chat, ChunkSource } from "./types";
 import { debounce } from "lodash";
 import { FileText, X, History, Folder, MessageCircle } from "lucide-react";
@@ -248,15 +249,29 @@ export const ChatScreen: FC = () => {
 
   // Fetch activity text only when the selected activity ID changes
   // Removed state.projects from deps to prevent multiple fetches/spinners
+  const meetingRefreshVersion = useRef(0);
+  useEffect(() => {
+    const onMeetingSaved = (event: Event) => {
+      const { id, html, title } = (event as CustomEvent<{ id: number; html: string; title: string }>).detail;
+      if (id !== state.selectedActivityId) return;
+      meetingRefreshVersion.current++;
+      setSelectedActivityText(html);
+      setSelectedActivityName(title);
+      setIsLoadingActivityText(false);
+    };
+    window.addEventListener('meeting-note-saved', onMeetingSaved);
+    return () => window.removeEventListener('meeting-note-saved', onMeetingSaved);
+  }, [state.selectedActivityId]);
   useEffect(() => {
     let cancelled = false;
+    const version = meetingRefreshVersion.current;
     if (state.selectedActivityId) {
       setSelectedActivityText("");  // Clear old text immediately so editor remounts fresh
       setSelectedActivityName("");  // Clear old name so it doesn't flash in the new document
       setIsLoadingActivityText(true);
       fetchSelectedActivityText()
         .then((text) => {
-          if (cancelled) return;
+          if (cancelled || version !== meetingRefreshVersion.current) return;
           setSelectedActivityText(text);
           
           // Use the existing getActivityName function with null check
@@ -348,7 +363,10 @@ export const ChatScreen: FC = () => {
     }
   };
 
-  const handleSaveText = async (newContent: string, newTitle: string, docId: number) => {
+  const handleSaveText = (newContent: string, newTitle: string, docId: number): Promise<void> => {
+    return enqueueNoteSave(docId, () => saveNoteText(newContent, newTitle, docId));
+  };
+  const saveNoteText = async (newContent: string, newTitle: string, docId: number) => {
     // Use the documentId passed by TipTapEditor (from its ref) rather than
     // state.selectedActivityId, which may have already changed if the user
     // switched documents while a debounced auto-save was in flight.
@@ -366,11 +384,9 @@ export const ChatScreen: FC = () => {
       documentId: targetId,
     }).catch(e => console.log('Vectorization skipped or failed:', e));
 
-    // Save title if changed — look up the current name for this specific document
-    const currentName = getActivityName(targetId);
-    if (newTitle && newTitle !== currentName) {
-      await updateActivityName(targetId, newTitle);
-    }
+    // Persist the queued snapshot's title too. A captured project list can be
+    // stale after a preceding save (for example an automatic meeting title).
+    await updateActivityName(targetId, newTitle);
 
     // Only refetch if this is still the active document
     if (targetId === state.selectedActivityId) {

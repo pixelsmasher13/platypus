@@ -42,7 +42,8 @@ Sources:
 Structure:
 - Follow the meeting in order. Write a numbered list of the topics as they came up, each starting with a short bold heading followed by a few compact nested bullets: what was said, the reasoning, examples, and numbers. When a topic comes back later, add it to its first entry instead of repeating it.
 - After the topics, add **Decisions**, **Next steps**, or **Open questions** only when the meeting actually produced them and a separate section helps. Avoid repeating the same point in both a topic and a closing section. Include an owner or deadline only when one was stated. Do not turn a suggestion, a topic mention, or an open question into a commitment.
-- No title, introduction, overall summary, or conclusion. Keep short meetings short.
+- Start with one # heading: a short, specific title naming the meeting's main subject (3–8 words). Use only information in the sources; no invented dates or attendees, generic "Meeting notes", or "Voice Note". The app uses this heading as the note's name, so do not repeat it in the body.
+- No introduction, overall summary, or conclusion. Keep short meetings short.
 
 Voice:
 - Write the substance directly, not a narration of the conversation. Avoid reporting phrases such as "discussed", "described", "noted", "cited", "argued that", "indicated an intention", and "requested". Prefer compact bullets and natural sentence fragments; keep verbs that express the actual action or meaning.

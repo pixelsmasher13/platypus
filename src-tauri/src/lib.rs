@@ -8,6 +8,7 @@ pub mod transcription_audio;
 pub mod source_transcription;
 pub mod transcription_context;
 pub mod recording_audio;
+pub mod meeting_notes;
 #[path = "engine/audio_processor.rs"]
 pub mod audio_processor;
 

@@ -124,7 +124,7 @@ impl SourceTranscript {
     }
     pub fn context(&self, source: AudioSource) -> String {
         let text = self
-            .segments
+            .visible_segments()
             .iter()
             .rev()
             .filter(|segment| segment.source == source)
@@ -150,9 +150,9 @@ impl SourceTranscript {
         } else {
             self.drafts.iter().flatten().cloned().collect()
         };
-        let heard: Vec<_> = self.segments.iter().chain(&drafts).cloned().collect();
-        let segments = without_echo(&self.segments, &heard);
-        let drafts = without_echo(&drafts, &heard);
+        // Speculative remote words must never erase a committed microphone turn.
+        let segments = self.visible_segments();
+        let drafts = without_echo(&drafts, &self.segments);
         let committed = format_segments(&segments);
         let draft = format_segments(&drafts);
         let text = [committed.as_str(), draft.as_str()]
@@ -168,12 +168,11 @@ impl SourceTranscript {
     }
 }
 
-// Speaker playback leaks into the microphone, so remote speech is decoded on
-// both channels. Microphone words that repeat word pairs from nearby meeting
-// audio are echo. A run of other words long enough to be real speech (not a
-// misheard echo word) is the user's own and is kept verbatim.
-const ECHO_WINDOW_MS: u64 = 2000;
-const MIN_OWN_WORDS: usize = 6;
+// Text alone cannot distinguish speaker leakage from a reply that repeats a
+// question. Never cut words out of a microphone turn: even a one-word addition
+// can reverse its meaning. Suppress only complete, long duplicates whose capture
+// intervals mostly coincide. This deliberately leaves uncertain echo intact.
+const MIN_ECHO_WORDS: usize = 6;
 
 pub fn without_echo(
     segments: &[TranscriptSegment],
@@ -181,72 +180,34 @@ pub fn without_echo(
 ) -> Vec<TranscriptSegment> {
     segments
         .iter()
-        .filter_map(|segment| {
+        .filter(|segment| {
             if segment.source != AudioSource::Microphone {
-                return Some(segment.clone());
+                return true;
             }
-            let heard: Vec<_> = reference
-                .iter()
-                .filter(|other| {
-                    other.source == AudioSource::System
-                        && other.start_ms < segment.end_ms + ECHO_WINDOW_MS
-                        && other.end_ms + ECHO_WINDOW_MS > segment.start_ms
-                })
-                .flat_map(|other| words(&other.text))
-                .map(|(_, key)| key)
-                .collect();
-            let pairs: std::collections::HashSet<_> = heard.windows(2).collect();
             let spoken = words(&segment.text);
-            let keys: Vec<_> = spoken.iter().map(|(_, key)| key.clone()).collect();
-            let mut echo = vec![false; spoken.len()];
-            for (i, pair) in keys.windows(2).enumerate() {
-                if pairs.contains(pair) {
-                    echo[i] = true;
-                    echo[i + 1] = true;
-                }
-            }
-            // A reply may reuse a pair of the question's words; echo repeats more.
-            let runs = flag_runs(&echo);
-            if !runs.iter().any(|&(start, end, is_echo)| is_echo && end - start >= 3) {
-                return Some(segment.clone());
-            }
-            // One shared pair inside a longer sentence is coincidence ("of the").
-            let own = |run: Option<&(usize, usize, bool)>| {
-                run.map_or(true, |&(start, end, is_echo)| !is_echo && end - start >= MIN_OWN_WORDS)
-            };
-            for (n, &(start, end, is_echo)) in runs.iter().enumerate() {
-                if is_echo && end - start == 2
-                    && own(n.checked_sub(1).map(|p| &runs[p])) && own(runs.get(n + 1))
-                {
-                    echo[start..end].fill(false);
-                }
-            }
-            let mut kept = Vec::new();
-            for (start, end, is_echo) in flag_runs(&echo) {
-                if !is_echo && end - start >= MIN_OWN_WORDS {
-                    kept.push(spoken[start..end].iter().map(|(word, _)| *word).collect::<Vec<_>>().join(" "));
-                }
-            }
-            (!kept.is_empty()).then(|| TranscriptSegment { text: kept.join(" … "), ..segment.clone() })
+            spoken.len() < MIN_ECHO_WORDS
+                || !reference.iter().any(|other| {
+                    other.source == AudioSource::System
+                        && mostly_overlaps(segment, other)
+                        && spoken == words(&other.text)
+                })
         })
+        .cloned()
         .collect()
 }
-fn words(text: &str) -> Vec<(&str, String)> {
+fn mostly_overlaps(a: &TranscriptSegment, b: &TranscriptSegment) -> bool {
+    let overlap = a.end_ms.min(b.end_ms).saturating_sub(a.start_ms.max(b.start_ms));
+    let longest = a.end_ms.saturating_sub(a.start_ms)
+        .max(b.end_ms.saturating_sub(b.start_ms));
+    // At least 80% of BOTH intervals, not just the shorter one. A long mic
+    // chunk can include the user's own reply after the remote speaker finishes.
+    longest > 0 && u128::from(overlap) * 5 >= u128::from(longest) * 4
+}
+fn words(text: &str) -> Vec<String> {
     text.split_whitespace()
-        .map(|word| (word, word.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>()))
-        .filter(|(_, key)| !key.is_empty())
+        .map(|word| word.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>())
+        .filter(|key| !key.is_empty())
         .collect()
-}
-fn flag_runs(flags: &[bool]) -> Vec<(usize, usize, bool)> {
-    let mut runs = Vec::new();
-    let mut start = 0;
-    for end in 1..=flags.len() {
-        if end == flags.len() || flags[end] != flags[start] {
-            runs.push((start, end, flags[start]));
-            start = end;
-        }
-    }
-    runs
 }
 pub fn format_segments(segments: &[TranscriptSegment]) -> String {
     segments
@@ -372,6 +333,43 @@ mod tests {
         TranscriptSegment { source, start_ms, end_ms, text: text.into() }
     }
     #[test]
+    fn short_answers_and_negation_are_never_cut_from_overlapping_mic_speech() {
+        let remote = turn(AudioSource::System, 0, 10000, "Is it the Qs is it the SPY is it the RSP?");
+        for text in [
+            "Is it the Qs is it the SPY is it the RSP? No, RSP as well.",
+            "No, it is not the SPY.",
+            "Is it the Qs? No.",
+        ] {
+            let mic = turn(AudioSource::Microphone, 0, 20000, text);
+            assert_eq!(without_echo(&[mic.clone()], &[remote.clone()]), vec![mic]);
+        }
+    }
+    #[test]
+    fn repeated_words_at_different_times_and_short_replies_are_kept() {
+        let remote = turn(AudioSource::System, 0, 5000, "We should look at the rate cut period again.");
+        let reply = turn(AudioSource::Microphone, 5100, 10000, &remote.text);
+        assert_eq!(without_echo(&[reply.clone()], &[remote]), vec![reply]);
+        let remote = turn(AudioSource::System, 0, 2000, "Yes, that's right.");
+        let reply = turn(AudioSource::Microphone, 0, 2000, &remote.text);
+        assert_eq!(without_echo(&[reply.clone()], &[remote]), vec![reply]);
+    }
+    #[test]
+    fn partial_matches_and_unequal_capture_intervals_are_not_enough_to_drop_a_turn() {
+        let remote = turn(AudioSource::System, 100, 10100,
+            "We should look at the rate cut period again.");
+        for mic in [
+            turn(AudioSource::Microphone, 0, 10000, "We should look at the rate cut period."),
+            turn(AudioSource::Microphone, 0, 20000, &remote.text),
+            turn(AudioSource::Microphone, 9900, 19900, &remote.text),
+            turn(AudioSource::Microphone, 100, 100, &remote.text),
+        ] {
+            assert_eq!(without_echo(&[mic.clone()], &[remote.clone()]), vec![mic]);
+        }
+        let echo = turn(AudioSource::Microphone, 0, 10000,
+            "we should look at the rate cut period again");
+        assert!(without_echo(&[echo], &[remote]).is_empty());
+    }
+    #[test]
     fn speaker_echo_is_removed_but_own_speech_is_kept_verbatim() {
         let remote = turn(AudioSource::System, 200, 9000,
             "If it were to reverse quickly, change positioning to get on sides quickly. I'm not trying to predict anything.");
@@ -380,10 +378,10 @@ mod tests {
             "we could if it were to reverse quickly sort of change positioning to get on sides quickly uh and so i'm not trying to predict anything yeah i mean just generally speaking um, Taylor, there's been a lot of dispersion");
         let segments = vec![mic.clone(), remote.clone()];
         let visible = without_echo(&segments, &segments);
-        assert_eq!(visible[0].text, "yeah i mean just generally speaking um, Taylor, there's been a lot of dispersion");
+        assert_eq!(visible[0], mic);
         assert_eq!((visible[0].start_ms, visible[1].clone()), (0, remote.clone()));
         // Pure echo disappears; identical words said well outside the window stay.
-        let echo = turn(AudioSource::Microphone, 0, 9000, "if it were to reverse quickly change positioning");
+        let echo = turn(AudioSource::Microphone, 0, 9000, &remote.text);
         let later = turn(AudioSource::Microphone, 60000, 62000, "If it were to reverse quickly?");
         let visible = without_echo(&[echo, remote.clone(), later.clone()], &[remote.clone()]);
         assert_eq!(visible, vec![remote.clone(), later]);
@@ -395,12 +393,12 @@ mod tests {
         // A shared pair inside a longer sentence is coincidence, not a hole to cut.
         let sentence = turn(AudioSource::Microphone, 2500, 20000,
             "that is a small subset. And now the market caps are so large that a few of the names, I mean, AMD is a trillion dollars");
-        let visible = without_echo(&[question.clone(), reply.clone(), sentence], &[question]);
+        let visible = without_echo(&[question.clone(), reply.clone(), sentence.clone()], &[question]);
         assert_eq!(visible[1], reply);
-        assert_eq!(visible[2].text, "And now the market caps are so large that a few of the names, I mean, AMD is a trillion dollars");
+        assert_eq!(visible[2], sentence);
     }
     #[test]
-    fn live_updates_and_saved_segments_hide_echo_including_draft_echo() {
+    fn only_committed_remote_turns_can_suppress_whole_mic_duplicates() {
         let rate = 16000;
         let chunk = |source, start_sample, seconds: usize| SourceChunk {
             source,
@@ -410,13 +408,15 @@ mod tests {
         transcript.commit(&chunk(AudioSource::Microphone, 0, 5), rate as u32, "we should look at the rate cut period again");
         transcript.revise(&chunk(AudioSource::System, 0, 5), rate as u32, "We should look at the rate cut period again.");
         let update = transcript.update(false);
-        assert!(update["segments"].as_array().unwrap().is_empty());
+        assert_eq!(update["segments"].as_array().unwrap().len(), 1);
         assert_eq!(update["draft_text"], "Remote participants: We should look at the rate cut period again.");
         transcript.commit(&chunk(AudioSource::System, 0, 5), rate as u32, "We should look at the rate cut period again.");
         assert_eq!(transcript.text(), "Remote participants: We should look at the rate cut period again.");
         assert_eq!(transcript.visible_segments().len(), 1);
-        // The raw decode remains the microphone's own prompt context.
-        assert_eq!(transcript.context(AudioSource::Microphone), "we should look at the rate cut period again");
+        // Preserve raw decodes for inspection, but don't feed identified remote
+        // echo back into the microphone's next transcription prompt.
+        assert_eq!(transcript.segments.len(), 2);
+        assert!(transcript.context(AudioSource::Microphone).is_empty());
     }
 }
 
