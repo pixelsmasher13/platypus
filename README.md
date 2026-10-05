@@ -149,4 +149,4 @@ Platypus stands on the shoulders of:
 
 ## License
 
-MIT.
+[MIT](LICENSE) © Heelix Technologies Inc.
